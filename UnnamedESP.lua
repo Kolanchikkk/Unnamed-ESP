@@ -1,2615 +1,1161 @@
-assert(Drawing, 'exploit not supported')
+--Dendro-ESP
+--Kolan_Gamer31
+--Ver 2.0
 
-if not syn and not PROTOSMASHER_LOADED then print'Unnamed ESP only officially supports Synapse and Protosmasher! If you\'re an exploit developer and have added drawing API to your exploit, try setting syn as true then checking if that works, otherwise, DM me on discord @ cppbook.org#1968 or add an issue to the Unnamed ESP Github Repository and I\'ll see it through email!' end
+--#region Setup
+--//Services\\--
+local UserInputService = game:GetService("UserInputService");
+local RunService = game:GetService("RunService");
+local GuiService = game:GetService("GuiService");
+local Workspace = game:GetService("Workspace");
+local CoreGui = game:GetService("CoreGui");
+local Players = game:GetService("Players");
 
-if not cloneref then cloneref = function(o) return o end end
+local LPlayer = Players.LocalPlayer;
+local Mouse = LPlayer:GetMouse();
+--//ENV Stack Declaration\\--
+local Min, Max = math.min, math.max;
+local Cos, Sin = math.cos, math.sin;
+local Rad, PI = math.rad, math.pi;
+local Unpack, TRemove = table.unpack, table.remove;
 
-local UserInputService = cloneref(game:GetService'UserInputService')
-local HttpService = cloneref(game:GetService'HttpService')
-local TweenService = cloneref(game:GetService'TweenService')
-local RunService = cloneref(game:GetService'RunService')
-local Players = game:GetService'Players'
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-local Mouse = LocalPlayer:GetMouse()
-local V2New = Vector2.new
-local V3New = Vector3.new
-local WTVP = Camera.WorldToViewportPoint
-local WorldToViewport = function(...) return WTVP(Camera, ...) end
-local Menu = {}
-local MouseHeld = false
-local LastRefresh = 0
-local OptionsFile = 'Kolanchikkk_ESP_SETTINGS.dat'
-local Binding = false
-local BindedKey = nil
-local OIndex = 0
-local LineBox = {}
-local UIButtons = {}
-local Sliders = {}
-local ColorPicker = { Loading = false, LastGenerated = 0 }
-local Dragging = false
-local DraggingUI = false
-local Rainbow = false
-local DragOffset = V2New()
-local DraggingWhat = nil
-local OldData = {}
-local IgnoreList = {}
-local EnemyColor = Color3.new(1, 0, 0)
-local TeamColor = Color3.new(0, 1, 0)
-local MenuLoaded = false
-local ErrorLogging = false
-local TracerPosition = V2New(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y - 135)
-local DragTracerPosition = false
-local SubMenu = {}
-local IsSynapse = syn and not PROTOSMASHER_LOADED
-local Connections = { Active = {} }
-local Signal = {} Signal.__index = Signal
-local GetCharacter, CurrentColorPicker, Spectating
+local NewV3 = Vector3.new;
+local NewV2 = Vector2.new;
+local NewCF = CFrame.new;
 
-local QUAD_SUPPORTED_EXPLOIT = pcall(function() Drawing.new('Quad'):Remove() end)
+local EmptyCF = NewCF();
+local Viewport, MouseUnlocker, SetupViewport, BulletSource;
+--//DataModel Stack Declaration\\--
+local Camera, Raycast = Workspace.CurrentCamera, Workspace.Raycast;
+local ToScreenPoint = Camera.WorldToViewportPoint;
+--//Events\\--
+local PostRender = Instance.new("BindableEvent");
+local NonNegativeTables;
+--//Main\\--
+local DendroESP = {
+    AimbotEnabled = false;
+    AimSensetivity = 4;
+    PostRender = PostRender.Event;
 
-shared.MenuDrawingData = shared.MenuDrawingData or { Instances = {} }
-shared.InstanceData = shared.InstanceData or {}
-shared.RSName = shared.RSName or ('UnnamedESP_by_Kolanchikkk-' .. HttpService:GenerateGUID(false))
+    BulletOffset = NewCF(0, 0, -1);
+    WallPenThickness = 0;
+    RaycastParams = RaycastParams.new();
 
-local GetDataName = shared.RSName .. '-GetData'
-local UpdateName = shared.RSName .. '-Update'
+    PositiveColor = Color3.fromHex("#A5C739");
+    NegativeColor = Color3.fromHex("#BE1E2D");
+    NeutralColor = Color3.fromHex("#F7941D");
 
-local Debounce = setmetatable({}, {
-	__index = function(t, i)
-		return rawget(t, i) or false
-	end
-})
-
-if shared.UESP_InputChangedCon then shared.UESP_InputChangedCon:Disconnect() end
-if shared.UESP_InputBeganCon then shared.UESP_InputBeganCon:Disconnect() end
-if shared.UESP_InputEndedCon then shared.UESP_InputEndedCon:Disconnect() end
-if shared.CurrentColorPicker then shared.CurrentColorPicker:Dispose() end
-
-local function IsStringEmpty(String)
-	if type(String) == 'string' then
-		return String:match'^%s+$' ~= nil or #String == 0 or String == '' or false;
-	end
-	
-	return false;
-end
-
-local function Set(t, i, v) t[i] = v end
-
-local Teams = {};
-local CustomTeams = { -- Games that don't use roblox's team system
-	[2563455047] = {
-		Initialize = function()
-			Teams.Sheriffs = {}; -- prevent big error
-			Teams.Bandits = {}; -- prevent big error
-			local Func = game:GetService'ReplicatedStorage':WaitForChild('RogueFunc', 1);
-			local Event = game:GetService'ReplicatedStorage':WaitForChild('RogueEvent', 1);
-			local S, B = Func:InvokeServer'AllTeamData';
-
-			Teams.Sheriffs = S;
-			Teams.Bandits = B;
-
-			Event.OnClientEvent:Connect(function(id, PlayerName, Team, Remove) -- stolen straight from decompiled src lul
-				if id == 'UpdateTeam' then
-					local TeamTable, NotTeamTable
-					if Team == 'Bandits' then
-						TeamTable = TDM.Bandits
-						NotTeamTable = TDM.Sheriffs
-					else
-						TeamTable = TDM.Sheriffs
-						NotTeamTable = TDM.Bandits
-					end
-					if Remove then
-						TeamTable[PlayerName] = nil
-					else
-						TeamTable[PlayerName] = true
-						NotTeamTable[PlayerName] = nil
-					end
-					if PlayerName == LocalPlayer.Name then
-						TDM.Friendlys = TeamTable
-						TDM.Enemies = NotTeamTable
-					end
-				end
-			end)
-		end;
-		CheckTeam = function(Player)
-			local LocalTeam = Teams.Sheriffs[LocalPlayer.Name] and Teams.Sheriffs or Teams.Bandits;
-			
-			return LocalTeam[Player.Name] and true or false;
-		end;
-	};
-	[5208655184] = {
-		CheckTeam = function(Player)
-			local LocalLastName = LocalPlayer:GetAttribute'LastName' if not LocalLastName or IsStringEmpty(LocalLastName) then return true end
-			local PlayerLastName = Player:GetAttribute'LastName' if not PlayerLastName then return false end
-
-			return PlayerLastName == LocalLastName
-		end
-	};
-	[3541987450] = {
-		CheckTeam = function(Player)
-			local LocalStats = LocalPlayer:FindFirstChild'leaderstats';
-			local LocalLastName = LocalStats and LocalStats:FindFirstChild'LastName'; if not LocalLastName or IsStringEmpty(LocalLastName.Value) then return true; end
-			local PlayerStats = Player:FindFirstChild'leaderstats';
-			local PlayerLastName = PlayerStats and PlayerStats:FindFirstChild'LastName'; if not PlayerLastName then return false; end
-
-			return PlayerLastName.Value == LocalLastName.Value;
-		end;
-	};
-    [6032399813] = {
-		CheckTeam = function(Player)
-			local LocalStats = LocalPlayer:FindFirstChild'leaderstats';
-			local LocalGuildName = LocalStats and LocalStats:FindFirstChild'Guild'; if not LocalGuildName or IsStringEmpty(LocalGuildName.Value) then return true; end
-			local PlayerStats = Player:FindFirstChild'leaderstats';
-			local PlayerGuildName = PlayerStats and PlayerStats:FindFirstChild'Guild'; if not PlayerGuildName then return false; end
-
-			return PlayerGuildName.Value == LocalGuildName.Value;
-		end;
-	};
-    [5735553160] = {
-		CheckTeam = function(Player)
-			local LocalStats = LocalPlayer:FindFirstChild'leaderstats';
-			local LocalGuildName = LocalStats and LocalStats:FindFirstChild'Guild'; if not LocalGuildName or IsStringEmpty(LocalGuildName.Value) then return true; end
-			local PlayerStats = Player:FindFirstChild'leaderstats';
-			local PlayerGuildName = PlayerStats and PlayerStats:FindFirstChild'Guild'; if not PlayerGuildName then return false; end
-
-			return PlayerGuildName.Value == LocalGuildName.Value;
-		end;
-	};
+    RenderPartState = false;
+    RenderModelState = false;
+    RenderCharacterState = true;
 };
+--#endregion
 
-local RenderList = {Instances = {}};
+--#region Functions
+function DendroESP:RunOnChildren(Folder, Function)
+    local Children = Folder:GetChildren();
+    for _ = 1, #Children do
+        Function(Children[_], _);
+    end;
+    return Folder.ChildAdded:Connect(function(Child)
+        Function(Child);
+    end);
+end;
 
-function RenderList:AddOrUpdateInstance(Instance, Obj2Draw, Text, Color)
-	RenderList.Instances[Instance] = { ParentInstance = Instance; Instance = Obj2Draw; Text = Text; Color = Color };
-	return RenderList.Instances[Instance];
-end
+function DendroESP:GetDPI(ForceUpdate)
+    SetupViewport();
+    if (self.DPI and not ForceUpdate) then return self.DPI; end;
+    MouseUnlocker.Visible = true;
+    local StartPosition = self:GetMousePos();
+    mousemoveabs(100, 100);
+    mousemoveabs(100, 099);
+    Mouse.Move:Wait();
+    local EndPosition = self:GetMousePos();
+    local DPI = math.round(1e4 / EndPosition.X) / 100;
+    StartPosition =  StartPosition * DPI;
+    mousemoveabs(StartPosition.X, StartPosition.Y);
+    self.DPI = DPI;
+    MouseUnlocker.Visible = false;
+    return DPI;
+end;
 
-local CustomPlayerTag;
-local CustomESP;
-local CustomCharacter;
-local GetHealth;
-local GetAliveState;
-local CustomRootPartName;
+function DendroESP:GetMouseSensitivity()
+    return UserSettings().GameSettings.MouseSensitivity;
+end;
 
-local Modules = {
-	[292439477] = {
-		Initialize = function()
-			if not create_comm_channel or not get_comm_channel then return end
+function DendroESP:ScheduleKeypress(Key, Delay)
+    task.wait(Delay);
+    keypress(Key);
+end;
 
-			local run_on_actor = runonactor or run_on_actor
-			local EventID, Event = create_comm_channel()
-			Event.Event:Connect(function(List)
-				PF_CharList = List
-			end)
-			
-			for Index, Actor in pairs(getactors()) do
-				run_on_actor(Actor, [[
-					local Event = get_comm_channel(...)
+function DendroESP:AimAt(Pos)
+    self.AimbotEnabled = (Pos and true);
+    self.AimTarget = Pos;
+end;
 
-					if not getrenv().shared.require then return end
-					
-					local RunService = game:GetService'RunService'
-					local Cache = debug.getupvalues(getrenv().shared.require)[1]._cache if not Cache then return end
-					local ReplicationInterface = rawget(rawget(Cache, 'ReplicationInterface'), 'module') if not ReplicationInterface then return end
-					local getEntry = rawget(ReplicationInterface, 'getEntry')
+function DendroESP:MoveMouse(X, Y)
+    local DPI = self:GetDPI();
+    mousemoverel(X * DPI, Y * DPI);
+end;
 
-					if shared.UNPFHB then shared.UNPFHB:Disconnect() end
+function DendroESP:MouseMoveTo(X, Y)
+    local DPI = self:GetDPI();
+    mousemoveabs(X * DPI, Y * DPI);
+end;
 
-					shared.UNPFHB = RunService.Heartbeat:Connect(function()
-						local CharacterList = {}
-						
-						for Player, Entry in pairs(debug.getupvalues(getEntry)[1]) do
-							local TPO = rawget(Entry, '_thirdPersonObject') if not TPO then continue end
-							local Character = rawget(TPO, '_characterHash') if not Character then continue end
-							local Torso = rawget(Character, 'Torso') if not Torso then continue end
-							local HealthState = rawget(Entry, '_healthstate')
+function DendroESP:GetMousePos()
+    return NewV2(Mouse.X, Mouse.Y) + GuiService:GetGuiInset();    
+end;
+local GetMousePos = DendroESP.GetMousePos;
 
-							CharacterList[Player.Name] = {
-								Head = Character.Head,
-								Torso = Character.Torso,
-								Health = HealthState and rawget(HealthState, 'health0') or 100,
-								Alive = rawget(Entry, '_alive')
-							}
-						end
+local function GetModelPart(Model)
+    return Model.PrimaryPart or Model:FindFirstChildWhichIsA("BasePart");
+end;
 
-						Event:Fire(CharacterList)
-					end)
-				]], EventID)
-			end
-		end,
+local function GetRootPart(Character)
+    return Character:FindFirstChild("HumanoidRootPart") or Character:FindFirstChild("RootPart") or GetModelPart(Character);
+end;
 
-		CustomCharacter = function(Player)
-			if not shared.PF_CharMT then
-				shared.PF_CharMT = {}
-				shared.PF_CharMT.__index = shared.PF_CharMT
+local function GetBulletSource()
+    local BulletSource = DendroESP.BulletSource;
+    local BulletOffset = DendroESP.BulletOffset;
+    if (not BulletSource) then return (Camera.CFrame * BulletOffset).Position; end;
+    return (typeof(BulletSource) == "CFrame" and (BulletSource * BulletOffset).Position) or (BulletSource.CFrame * BulletOffset).Position;
+end;
+--#endregion
 
-				function shared.PF_CharMT:FindFirstChild(Name)
-					return rawget(self, Name)
-				end
+--#endregion
 
-				function shared.PF_CharMT:FindFirstChildOfClass() end
-			end
+--#region Math Hell
+local function GetCorners(Part)
+    local CF, Size, Corners = Part.CFrame, Part.Size / 2, {};
+    for X = -1, 1, 2 do for Y = -1, 1, 2 do for Z = -1, 1, 2 do
+        Corners[#Corners+1] = (CF * NewCF(Size * Vector3.new(X, Y, Z))).Position;    
+    end; end; end;
+    return Corners;
+end;
 
-			if PF_CharList and PF_CharList[Player.Name] then
-				local Character = PF_CharList[Player.Name]
-				
-				setmetatable(Character, shared.PF_CharMT)
-				
-				return Character
-			end
-		end,
+local function GetEdgesNoOverlap(Part)
+    local Corners = GetCorners(Part);
+    --[[ Corner Data:
+        (-1, -1, -1) [1]
+        (-1, -1, +1) [2]
+        (-1, +1, -1) [3]
+        (-1, +1, +1) [4]
+        (+1, -1, -1) [5]
+        (+1, -1, +1) [6]
+        (+1, +1, -1) [7]
+        (+1, +1, +1) [8]
+    ]]
+    -- Binary math haunts me everywhere I go...
+    local C000, C001, C010, C011, C100, C101, C110, C111 = Unpack(Corners);
+    -- This just takes turns at NOT'ing the bits at [3], [2], and [1] positions, respectively.
+    -- First index is b000 << b10 every 3 tables.
+    return {
+        {C000, C001};
+        {C000, C010};
+        {C000, C100};
+        {C011, C010};
+        {C011, C001};
+        {C011, C111};
+        {C110, C111};
+        {C110, C100};
+        {C110, C010};
+        {C101, C100};
+        {C101, C111};
+        {C101, C001};
+    };
+end;
 
-		GetHealth = function(Player)
-			if PF_CharList and PF_CharList[Player.Name] then
-				return PF_CharList[Player.Name].Health
-			end
-		end,
+local function GetCharacterVertices(CF)
+    return  {
+        -- Head
+        {CF * NewCF(-0.5, 1, 0).Position, CF * NewCF(-0.5, 2, 0).Position};
+        {CF * NewCF(-0.5, 2, 0).Position, CF * NewCF(0.5, 2, 0).Position};
+        {CF * NewCF(0.5, 2, 0).Position,  CF * NewCF(0.5, 1, 0).Position};
+        -- Right Arm
+        {CF * NewCF(0.5, 1, 0).Position, CF * NewCF(2, 1, 0).Position};
+        {CF * NewCF(2, 1, 0).Position,   CF * NewCF(2, -1, 0).Position};
+        {CF * NewCF(2, -1, 0).Position,  CF * NewCF(1, -1, 0).Position};
+        -- Feet
+        {CF * NewCF(1, -1, 0).Position,  CF * NewCF(1, -3, 0).Position};
+        {CF * NewCF(1, -3, 0).Position,  CF * NewCF(-1, -3, 0).Position};
+        {CF * NewCF(-1, -3, 0).Position, CF * NewCF(-1, -1, 0).Position};
+        -- Left Arm
+        {CF * NewCF(-1, -1, 0).Position, CF * NewCF(-2, -1, 0).Position};
+        {CF * NewCF(-2, -1, 0).Position, CF * NewCF(-2, 1, 0).Position};
+        {CF * NewCF(-2, 1, 0).Position,  CF * NewCF(-0.5, 1, 0).Position};
+    }
+end;
 
-		GetAliveState = function(Player)
-			if PF_CharList and PF_CharList[Player.Name] then
-				return PF_CharList[Player.Name].Alive
-			end
-		end,
+local function GetEdges(Part)
+    local Corners = GetCorners(Part);
+    local Edges, Corner = {}, Corners[1];
+    local C0, C1, C2 = Corners[2], Corners[3], Corners[5];
 
-		CustomRootPartName = 'Torso',
-	};
-	[2950983942] = {
-		CustomCharacter = function(Player)
-			if workspace:FindFirstChild'Players' then
-				return workspace.Players:FindFirstChild(Player.Name);
-			end
-		end
-	};
-	[2262441883] = {
-		CustomPlayerTag = function(Player)
-			return Player:FindFirstChild'Job' and (' [' .. Player.Job.Value .. ']') or '';
-		end;
-		CustomESP = function()
-			if workspace:FindFirstChild'MoneyPrinters' then
-	for i, v in pairs(workspace.MoneyPrinters:GetChildren()) do
-		local Main  = v:FindFirstChild'Main';
-		local Owner = v:FindFirstChild'TrueOwner';
-		local Money = v:FindFirstChild'Int' and v.Int:FindFirstChild'Money' or nil;
-		
-		if Main and Owner and Money then
-			local O = "Kolanchikkk"; -- ← подставляется всегда твой ник
-			local M = tostring(Money.Value);
+    Edges[1] = {
+        {Corner, C0, (Corner - C0).Unit};
+        {Corner, C1, (Corner - C1).Unit};
+        {Corner, C2, (Corner - C2).Unit};
+    };
 
-			pcall(RenderList.AddOrUpdateInstance, RenderList, v, Main, 
-				string.format('Money Printer\nOwned by %s\n[%s]', O, M), 
-				Color3.fromRGB(13, 255, 227)
-			);
-		end
-	end
-end
+    Corner, C0, C1, C2 = Corners[2], Corners[1], Corners[4], Corners[6];
+    Edges[2] = {
+        {Corner, C0, (Corner - C0).Unit};
+        {Corner, C1, (Corner - C1).Unit};
+        {Corner, C2, (Corner - C2).Unit};
+    };
 
-		end;
-	};
-	-- [4581966615] = {
--- 	CustomESP = function()
--- 		if workspace:FindFirstChild'Entities' then
--- 			for i, v in pairs(workspace.Entities:GetChildren()) do
--- 				if not v.Name:match'Printer' then continue end
+    Corner, C0, C1, C2 = Corners[3], Corners[1], Corners[4], Corners[7];
+    Edges[3] = {
+        {Corner, C0, (Corner - C0).Unit};
+        {Corner, C1, (Corner - C1).Unit};
+        {Corner, C2, (Corner - C2).Unit};
+    };
 
--- 				local Properties = v:FindFirstChild'Properties' if not Properties then continue end
--- 				local Main = v:FindFirstChild'hitbox';
--- 				local Owner = Properties:FindFirstChild'Owner';
--- 				local Money = Properties:FindFirstChild'CurrentPrinted'
-					
--- 				if Main and Owner and Money then
--- 					local O = "Kolanchikkk"; -- ← здесь ты задаёшь ник
--- 					local M = tostring(Money.Value);
+    Corner, C0, C1, C2 = Corners[4], Corners[2], Corners[3], Corners[8];
+    Edges[4] = {
+        {Corner, C0, (Corner - C0).Unit};
+        {Corner, C1, (Corner - C1).Unit};
+        {Corner, C2, (Corner - C2).Unit};
+    };
 
--- 					pcall(RenderList.AddOrUpdateInstance, RenderList, v, Main,
--- 						string.format('Money Printer\nOwned by %s\n[%s]', O, M),
--- 						Color3.fromRGB(13, 255, 227)
--- 					);
--- 				end
--- 			end
--- 		end
--- 	end;
--- };
+    Corner, C0, C1, C2 = Corners[5], Corners[1], Corners[6], Corners[7];
+    Edges[5] = {
+        {Corner, C0, (Corner - C0).Unit};
+        {Corner, C1, (Corner - C1).Unit};
+        {Corner, C2, (Corner - C2).Unit};
+    };
 
-	[4801598506] = {
-		CustomESP = function()
-			if workspace:FindFirstChild'Mobs' and workspace.Mobs:FindFirstChild'Forest1' then
-				for i, v in pairs(workspace.Mobs.Forest1:GetChildren()) do
-					local Main	= v:FindFirstChild'Head';
-					local Hum	= v:FindFirstChild'Mob';
+    Corner, C0, C1, C2 = Corners[6], Corners[2], Corners[5], Corners[8];
+    Edges[6] = {
+        {Corner, C0, (Corner - C0).Unit};
+        {Corner, C1, (Corner - C1).Unit};
+        {Corner, C2, (Corner - C2).Unit};
+    };
 
-					if Main and Hum then
-						pcall(RenderList.AddOrUpdateInstance, RenderList, v, Main, string.format('[%s] [%s/%s]', v.Name, Hum.Health, Hum.MaxHealth), Color3.fromRGB(13, 255, 227));
-					end
-				end
-			end
-		end;
-	};
-	[2555873122] = {
-		CustomESP = function()
-			if workspace:FindFirstChild'WoodPlanks' then
-				for i, v in pairs(workspace:GetChildren()) do
-					if v.Name == 'WoodPlanks' then
-						local Main = v:FindFirstChild'Wood';
+    Corner, C0, C1, C2 = Corners[7], Corners[3], Corners[5], Corners[8];
+    Edges[7] = {
+        {Corner, C0, (Corner - C0).Unit};
+        {Corner, C1, (Corner - C1).Unit};
+        {Corner, C2, (Corner - C2).Unit};
+    };
 
-						if Main then
-							pcall(RenderList.AddOrUpdateInstance, RenderList, v, Main, 'Wood Planks', Color3.fromRGB(13, 255, 227));
-						end
-					end
-				end
-			end
-		end;
-	};
-	[5208655184] = {
-		CustomESP = function()
-			-- if workspace:FindFirstChild'Live' then
-			-- 	for i, v in pairs(workspace.Live:GetChildren()) do
-			-- 		if v.Name:sub(1, 1) == '.' then
-			-- 			local Main = v:FindFirstChild'Head';
+    Corner, C0, C1, C2 = Corners[8], Corners[4], Corners[6], Corners[7];
+    Edges[8] = {
+        {Corner, C0, (Corner - C0).Unit};
+        {Corner, C1, (Corner - C1).Unit};
+        {Corner, C2, (Corner - C2).Unit};
+    };
+    return Edges;
+end;
 
-			-- 			if Main then
-			-- 				pcall(RenderList.AddOrUpdateInstance, RenderList, v, Main, v.Name:sub(2), Color3.fromRGB(250, 50, 40));
-			-- 			end
-			-- 		end
-			-- 	end
-			-- end
-		end;
-		CustomPlayerTag = function(Player)
-			if game.PlaceVersion < 457 then return '' end
+local InvalidPass = {[0] = true, [3] = true};
+local function CheckShadow(Corner, LightSource)
+    local LightDirection = (LightSource - Corner[1][1]).Unit;
+    local Passes = 0;
+    for _ = 1, 3 do
+        local Edge = Corner[_];
+        local Dot = Edge[3]:Dot(LightDirection);
+        Edge[4] = Dot;
+        Passes = Passes + ((Dot >= 0 and 1) or 0);
+    end;
+    return InvalidPass[Passes];
+end;
 
-			local Name = '';
-			local FirstName = Player:GetAttribute'FirstName'
+local function RemoveConnection(Connections, P0, P1)
+    for _ = 1, #Connections do
+        local Connection = Connections[_];
+        if (Connection[1] == P0 and Connection[2] == P1) then
+            return TRemove(Connections, _);
+        end;
+    end;
+end;
 
-			if typeof(FirstName) == 'string' and #FirstName > 0 then
-				local Prefix = '';
-				local Extra = {};
-				Name = Name .. '\n[';
+local function OldGetShadowPolygon(Part, LightSource)
+    local Edges = GetEdges(Part);
+    local ShadowCorners, ShadowEdges, Blacklist = {}, {}, {};
 
-				if Player:GetAttribute'Prestige' > 0 then
-					Name = Name .. '#' .. tostring(Player:GetAttribute'Prestige') .. ' ';
-				end
-				if not IsStringEmpty(Player:GetAttribute'HouseRank') then
-					Prefix = Player:GetAttribute'HouseRank' == 'Owner' and (Player:GetAttribute'Gender' == 'Female' and 'Lady ' or 'Lord ') or '';
-				end
-				if not IsStringEmpty(FirstName) then
-					Name = Name .. '' .. Prefix .. FirstName;
-				end
-				if not IsStringEmpty(Player:GetAttribute'LastName') then
-					Name = Name .. ' ' .. Player:GetAttribute'LastName';
-				end
+    for _ = 1, #Edges do
+        local Corner = Edges[_];
+        if (not Corner) then break; end;
+        if (CheckShadow(Corner, LightSource)) then
+            Blacklist[Corner[1][1]] = true;
+        else
+            ShadowCorners[#ShadowCorners+1] = Corner;
+        end;
+    end;
 
-				if not IsStringEmpty(Name) then Name = Name .. ']'; end
+    local PointConnections, Tripoint = {}, nil;
+    for _ = 1, #ShadowCorners do
+        local Corner = ShadowCorners[_];
+        local Start = Corner[1][1];
+        for _ = 1, 3 do
+            local End = Corner[_][2];
+            if (not Blacklist[End] and Corner[_][4] ~= 0) then
+                ShadowEdges[#ShadowEdges+1] = {Start, End};
+                local StartConn, EndConn = (PointConnections[Start] or 0) + 1, (PointConnections[End] or 0) + 1;
+                PointConnections[Start] = StartConn;
+                PointConnections[End] = EndConn;
+                if (StartConn == 3 and EndConn == 3) then
+                    ShadowEdges[#ShadowEdges] = nil;
+                elseif (StartConn == 3 or EndConn == 3) then
+                    local Tricon = (StartConn == 3 and Start) or End;
+                    if (Tripoint) then
+                        RemoveConnection(ShadowEdges, Tripoint, Tricon);
+                    else
+                        Tripoint = Tricon;
+                    end;
+                end;
+            end;
+        end;
+        Blacklist[Start] = true;
+    end;
 
-				local Character = GetCharacter(Player);
+    return ShadowEdges;
+end;
 
-				if Character then
-					if Character and Character:FindFirstChild'Danger' then table.insert(Extra, 'D'); end
-					if Character:FindFirstChild'ManaAbilities' and Character.ManaAbilities:FindFirstChild'ManaSprint' then table.insert(Extra, 'D1'); end
+local function GetShadowPolygon(Part, LightSource)
+    local Edges = GetEdges(Part);
+    local ShadowCorners, ShadowEdges, Blacklist = {}, {}, {};
 
-					if Character:FindFirstChild'Mana'	 		then table.insert(Extra, 'M' .. math.floor(Character.Mana.Value)); end
-					if Character:FindFirstChild'Vampirism' 		then table.insert(Extra, 'V'); end
-					if Character:FindFirstChild'Observe'		then table.insert(Extra, 'ILL'); end
-					if Character:FindFirstChild'Inferi'			then table.insert(Extra, 'NEC'); end
-					if Character:FindFirstChild'World\'s Pulse' then table.insert(Extra, 'DZIN'); end
-					if Character:FindFirstChild'Shift'		 	then table.insert(Extra, 'MAD'); end
-					if Character:FindFirstChild'Head' and Character.Head:FindFirstChild'FacialMarking' then
-						local FM = Character.Head:FindFirstChild'FacialMarking';
-						if FM.Texture == 'http://www.roblox.com/asset/?id=4072968006' then
-							table.insert(Extra, 'HEALER');
-						elseif FM.Texture == 'http://www.roblox.com/asset/?id=4072914434' then
-							table.insert(Extra, 'SEER');
-						elseif FM.Texture == 'http://www.roblox.com/asset/?id=4094417635' then
-							table.insert(Extra, 'JESTER');
-						elseif FM.Texture == 'http://www.roblox.com/asset/?id=4072968656' then
-							table.insert(Extra, 'BLADE');
-						end
-					end
-				end
-				if Player:FindFirstChild'Backpack' then
-					if Player.Backpack:FindFirstChild'Observe' 			then table.insert(Extra, 'ILL');  end
-					if Player.Backpack:FindFirstChild'Inferi'			then table.insert(Extra, 'NEC');  end
-					if Player.Backpack:FindFirstChild'World\'s Pulse' 	then table.insert(Extra, 'DZIN'); end
-					if Player.Backpack:FindFirstChild'Shift'		 	then table.insert(Extra, 'MAD'); end
-				end
+    for _ = 1, #Edges do
+        local Corner = Edges[_];
+        if (not Corner) then break; end;
+        if (CheckShadow(Corner, LightSource)) then
+            Blacklist[Corner[1][1]] = true;
+        else
+            ShadowCorners[#ShadowCorners+1] = Corner;
+        end;
+    end;
 
-				if #Extra > 0 then Name = Name .. ' [' .. table.concat(Extra, '-') .. ']'; end
-			end
+    local PointConnections, Tripoint = {}, nil;
+    for _ = 1, #ShadowCorners do
+        local Corner = ShadowCorners[_];
+        local Start = Corner[1][1];
+        for _ = 1, 3 do
+            local End = Corner[_][2];
+            if (not Blacklist[End] and Corner[_][4] ~= 0) then
+                ShadowEdges[#ShadowEdges+1] = {Start, End};
+                local StartConn, EndConn = (PointConnections[Start] or 0) + 1, (PointConnections[End] or 0) + 1;
+                PointConnections[Start] = StartConn;
+                PointConnections[End] = EndConn;
+                if (StartConn == 3 and EndConn == 3) then
+                    ShadowEdges[#ShadowEdges] = nil;
+                elseif (StartConn == 3 or EndConn == 3) then
+                    local Tricon = (StartConn == 3 and Start) or End;
+                    if (Tripoint) then
+                        RemoveConnection(ShadowEdges, Tripoint, Tricon);
+                    else
+                        Tripoint = Tricon;
+                    end;
+                end;
+            end;
+        end;
+        Blacklist[Start] = true;
+    end;
+    
+    local OutputTable = {};
+    for _ = 1, #ShadowEdges do
+        local Edge = ShadowEdges[_];
+        local Start, End = Edge[1], Edge[2];
+        local StartExists = OutputTable[Start];
+        OutputTable[(StartExists and End) or Start] = (StartExists and Start) or End;
+    end;
+    return OutputTable;
+end;
 
-			return Name;
-		end;
-	};
-	[3541987450] = {
-		CustomPlayerTag = function(Player)
-			local Name = '';
+-- Converts lines that pass through P0 and P1 into [Ax + By + C = 0] form. This is so that we can easily get the intersection.
+local function GetLineComponents(P0, P1)
+    local X1, Y1, X2, Y2 = P0.X, P0.Y, P1.X, P1.Y;
+    local A = Y1 - Y2;
+    local B = X2 - X1;
+    local C = X1 * Y2 - X2 * Y1;
 
-			if Player:FindFirstChild'leaderstats' then
-				Name = Name .. '\n[';
-				local Prefix = '';
-				local Extra = {};
-				if Player.leaderstats:FindFirstChild'Prestige' and Player.leaderstats.Prestige.ClassName == 'IntValue' and Player.leaderstats.Prestige.Value > 0 then
-					Name = Name .. '#' .. tostring(Player.leaderstats.Prestige.Value) .. ' ';
-				end
-				if Player.leaderstats:FindFirstChild'HouseRank' and Player.leaderstats:FindFirstChild'Gender' and Player.leaderstats.HouseRank.ClassName == 'StringValue' and not IsStringEmpty(Player.leaderstats.HouseRank.Value) then
-					Prefix = Player.leaderstats.HouseRank.Value == 'Owner' and (Player.leaderstats.Gender.Value == 'Female' and 'Lady ' or 'Lord ') or '';
-				end
-				if Player.leaderstats:FindFirstChild'FirstName' and Player.leaderstats.FirstName.ClassName == 'StringValue' and not IsStringEmpty(Player.leaderstats.FirstName.Value) then
-					Name = Name .. '' .. Prefix .. Player.leaderstats.FirstName.Value;
-				end
-				if Player.leaderstats:FindFirstChild'LastName' and Player.leaderstats.LastName.ClassName == 'StringValue' and not IsStringEmpty(Player.leaderstats.LastName.Value) then
-					Name = Name .. ' ' .. Player.leaderstats.LastName.Value;
-				end
-				if Player.leaderstats:FindFirstChild'UberTitle' and Player.leaderstats.UberTitle.ClassName == 'StringValue' and not IsStringEmpty(Player.leaderstats.UberTitle.Value) then
-					Name = Name .. ', ' .. Player.leaderstats.UberTitle.Value;
-				end
+    return A, B, C;
+end;
+-- Gets the intersection of 2 lines to determine where the angle break happens.
+local function GetIntersection(L0, L1)
+    local A1, B1, C1 = GetLineComponents(L0[1], L0[2]);
+    local A2, B2, C2 = GetLineComponents(L1[1], L1[2]);
+    local Denominator = (A1*B2-A2*B1);
+    local X = (B1*C2-B2*C1)/Denominator;
+    local Y = (C1*A2-C2*A1)/Denominator;
+    return NewV2(X, Y);
+end;
 
-				if not IsStringEmpty(Name) then Name = Name .. ']'; end
+local function GetTPoint(P0, P1, T)
+    return P0 * (1 - T) + P1 * T;
+end;
 
-				local Character = GetCharacter(Player);
+local function V3ToV2(Vector, ...)
+    return NewV2(Vector.X, Vector.Y), ...;
+end;
+--#endregion
 
-				if Character then
-					if Character and Character:FindFirstChild'Danger' then table.insert(Extra, 'D'); end
-					if Character:FindFirstChild'ManaAbilities' and Character.ManaAbilities:FindFirstChild'ManaSprint' then table.insert(Extra, 'D1'); end
+--#region Custom Drawing Library Implementation
+--Recycles Drawing tables because Synapse sucks at garbage collection.
+local Drawings = {};
+local function CreateDrawing(Type)
+    if (not Drawings[Type]) then Drawings[Type] = {Count = 0}; end;
+    local DrawingTable = Drawings[Type];
+    local Count = DrawingTable.Count + 1;
+    local Component = DrawingTable[Count];
+    DrawingTable.Count = Count;
+    if (Component) then return Component; end;
+    Component = Drawing.new(Type);
+    DrawingTable[Count] = Component;
+    return Component;
+end;
+Drawing.new("Line"):Remove();
 
-					if Character:FindFirstChild'Mana'	 		then table.insert(Extra, 'M' .. math.floor(Character.Mana.Value)); end
-					if Character:FindFirstChild'Vampirism' 		then table.insert(Extra, 'V');    end
-					if Character:FindFirstChild'Observe'			then table.insert(Extra, 'ILL');  end
-					if Character:FindFirstChild'Inferi'			then table.insert(Extra, 'NEC');  end
-					
-					if Character:FindFirstChild'World\'s Pulse' 	then table.insert(Extra, 'DZIN'); end
-					if Character:FindFirstChild'Head' and Character.Head:FindFirstChild'FacialMarking' then
-						local FM = Character.Head:FindFirstChild'FacialMarking';
-						if FM.Texture == 'http://www.roblox.com/asset/?id=4072968006' then
-							table.insert(Extra, 'HEALER');
-						elseif FM.Texture == 'http://www.roblox.com/asset/?id=4072914434' then
-							table.insert(Extra, 'SEER');
-						elseif FM.Texture == 'http://www.roblox.com/asset/?id=4094417635' then
-							table.insert(Extra, 'JESTER');
-						end
-					end
-				end
-				if Player:FindFirstChild'Backpack' then
-					if Player.Backpack:FindFirstChild'Observe' 			then table.insert(Extra, 'ILL');  end
-					if Player.Backpack:FindFirstChild'Inferi'			then table.insert(Extra, 'NEC');  end
-					if Player.Backpack:FindFirstChild'World\'s Pulse' 	then table.insert(Extra, 'DZIN'); end
-				end
+local function DrawLine(P0, P1, Color, Thickness, Transparency, Is2D)
+    if (not Is2D) then
+        local Start = ToScreenPoint(Camera, P0);
+        local End = ToScreenPoint(Camera, P1);
+        P0, P1 = V3ToV2(Start), V3ToV2(End);
+    end;
 
-				if #Extra > 0 then Name = Name .. ' [' .. table.concat(Extra, '-') .. ']'; end
-			end
+    local Line = CreateDrawing("Line");
+    Line.Color = Color;
+    Line.From, Line.To = P0, P1;
+    Line.Visible = true;
+    Line.Thickness = Thickness;
+    Line.Transparency = 1 - Transparency;
+    return Line;
+end;
 
-			return Name;
-		end;
-	};
+local function DrawRadialHitbox(self)
+    local RadialHitbox = self.RadialHitbox;
+    if (RadialHitbox == 0) then return; end;
+    if (RadialHitbox == true) then
+        RadialHitbox = (self.Max2DPoint - self.Min2DPoint).Magnitude / 2;
+    end;
+    local Color, Transparency = self.CurrentColor, self.Opacity;
+    local Center = (self.RadiusOnCrosshair and self.CrosshairCenter2D) or self.Center2D;
+    local MPos = DendroESP.MousePos;
+    local Radial = CreateDrawing("Circle");
+    Radial.Thickness = 1;
+    Radial.Position = Center;
+    Radial.Radius = RadialHitbox;
+    Radial.Color = Color;
+    Radial.Transparency = Transparency;
+    Radial.Visible = true;
+    self.MouseInRadius = (MPos - Center).Magnitude <= RadialHitbox;
+end;
 
-	[4691401390] = { -- Vast Realm
-		CustomCharacter = function(Player)
-			if workspace:FindFirstChild'Players' then
-				return workspace.Players:FindFirstChild(Player.Name);
-			end
-		end
-	};
+local function DrawText(self)
+    local Text = self.Text;
+    if (not self.TextEnabled or Text == "") then return; end;
+    local TextAlignment, Font, Size = self.TextAlignment, self.Font, self.TextSize;
+    local TextOutlineVisible, TextOutlineColor = self.TextOutlineVisible, self.TextOutlineColor;
+    if (Size == 0) then
+        Size = (self.MaxX - self.MinX) / 10;
+    end;
+    local TextDrawing = CreateDrawing("Text");
+    TextDrawing.Visible = true;
+    TextDrawing.Text, TextDrawing.Font, TextDrawing.Size, TextDrawing.Color = Text, Font, Size, self.CurrentColor;
+    TextDrawing.Outline, TextDrawing.OutlineColor = TextOutlineVisible, TextOutlineColor;
+    local TextPadding = self.TextPadding;
+    if (TextAlignment == Enum.TextXAlignment.Center) then
+        TextDrawing.Center = true;
+        TextDrawing.Position = NewV2(
+            (self.MinX + self.MaxX) / 2 + TextPadding.X,
+            self.MaxY + TextPadding.Y
+        );
+    elseif (TextAlignment == Enum.TextXAlignment.Right) then
+        local TextBounds = TextDrawing.TextBounds;
+        TextDrawing.Center = true;
+        TextDrawing.Position = NewV2(
+            self.MaxX - TextBounds.X / 2 - TextPadding.X,
+            self.MaxY + TextPadding.Y
+        );
+    else
+        TextDrawing.Center = false;
+        TextDrawing.Position = NewV2(
+            self.MinX + TextPadding.X,
+            self.MaxY + TextPadding.Y
+        );
+    end;
+    return TextDrawing;
+end;
 
-    [6032399813] = { -- Deepwoken [Etrean]
-		CustomPlayerTag = function(Player)
-			local Name = '';
-            CharacterName = Player:GetAttribute'CharacterName'; -- could use leaderstats but lazy
+local function DrawTracer(self)
+    if (not self.TracerEnabled) then return; end;
+    if (not self.NegativeTrace and self.CurrentState == "Negative") then return; end;
+    local P0 = DendroESP.TracerSource;
+    local P1 = NewV2(self.Center2D.X, self.Max2DPoint.Y);
+    local Line = CreateDrawing("Line");
+    Line.From, Line.To = P0, P1;
+    Line.Color = self.CurrentColor;
+    Line.Transparency = self.Opacity;
+    Line.Thickness = self.Thickness;
+    Line.Visible = true;
+end;
 
-            if not IsStringEmpty(CharacterName) then
-                Name = ('\n[%s]'):format(CharacterName);
-                local Character = GetCharacter(Player);
-                local Extra = {};
+local function DrawHealth(self)
+    if (not self.HealthEnabled) then return; end;
+    local Humanoid = self.Instance:FindFirstChildOfClass("Humanoid");
+    local Health, MaxHealth = (Humanoid and Humanoid.Health or self.Health), (Humanoid and Humanoid.MaxHealth or self.MaxHealth);
+    if (Health >= MaxHealth or Health <= 0) then return; end;
+    local HealthBarSize, HealthBarThickness = self.HealthBarSize, self.HealthBarThickness;
+    local MinX, MaxX, MinY = self.MinX, self.MaxX, self.MinY;
+    local Padding = self.HealthBarPadding;
+    HealthBarSize = ((HealthBarSize == 0 and MaxX - MinX) or HealthBarSize) / 2;
 
-                if Character then
-                    local Blood, Armor = Character:FindFirstChild('Blood'), Character:FindFirstChild('Armor');
+    local HealthBar, MaxHealthBar = CreateDrawing("Line"), CreateDrawing("Line");
+    HealthBar.Thickness, MaxHealthBar.Thickness = HealthBarThickness, HealthBarThickness;
+    HealthBar.Color = self.PositiveColor or self.PositiveFillColor;
+    MaxHealthBar.Color = self.NegativeColor or self.NegativeFillColor;
+    local Midpoint = (MinX + MaxX) / 2;
+    local BarStart, BarEnd, BarY = Midpoint - HealthBarSize, Midpoint + HealthBarSize, MinY - Padding - HealthBarThickness / 2;
+    local HealthPoint = NewV2(BarStart + HealthBarSize * 2 * Health / MaxHealth, BarY);
+    BarStart, BarEnd = NewV2(BarStart, BarY), NewV2(BarEnd, BarY);
+    HealthBar.From = BarStart;
+    MaxHealthBar.From = BarEnd;
+    HealthBar.To, MaxHealthBar.To = HealthPoint, HealthPoint;
+    HealthBar.Visible, MaxHealthBar.Visible = true, true;
+end;
 
-                    if Blood and Blood.ClassName == 'DoubleConstrainedValue' then
-                        table.insert(Extra, ('B%d'):format(Blood.Value));
-                    end
+local function DrawLineOnRadius(Center, Radian, R0, R1, Color, Thickness)
+    local XComponent, YComponent = Cos(Radian), Sin(Radian);
+    local Line = CreateDrawing("Line");
+    Line.Color, Line.Thickness = Color, Thickness;
+    Line.From = Center + NewV2(XComponent * R0, YComponent * R0);
+    Line.To = Center + NewV2(XComponent * R1, YComponent * R1);
+    Line.Visible = true;
+    return Line;
+end;
 
-                    if Armor and Armor.ClassName == 'DoubleConstrainedValue' then
-                        table.insert(Extra, ('A%d'):format(math.floor(Armor.Value / 10)));
-                    end
-                end
+local function DrawCrosshair(self, Center)
+    if (not self.CrosshairEnabled) then return; end;
+    Center = V3ToV2(ToScreenPoint(Camera, Center));
 
-                local BackpackChildren = Player.Backpack:GetChildren()
+    local Color = self.CurrentColor;
+    local CenterDot = CreateDrawing("Circle");
+    CenterDot.Filled = true;
+    CenterDot.Thickness = 0;
+    CenterDot.Radius = 4;
+    CenterDot.Color = Color;
+    CenterDot.Position = Center;
+    CenterDot.Visible = true;
+    local OuterRadius = CreateDrawing("Circle");
+    OuterRadius.Radius = 11;
+    OuterRadius.Thickness = 3;
+    OuterRadius.Color = Color;
+    OuterRadius.Position = Center;
+    OuterRadius.Visible = true;
+    local Rotation = Rad(self.CrosshairRotation);
+    DrawLineOnRadius(Center, Rotation, 5, 15, Color, 3);
+    DrawLineOnRadius(Center, Rotation + PI * 0.5, 5, 15, Color, 3);
+    DrawLineOnRadius(Center, Rotation + PI, 5, 15, Color, 3);
+    DrawLineOnRadius(Center, Rotation + PI * 1.5, 5, 15, Color, 3);
+    self.CrosshairRotation = self.CrosshairRotation + self.CrosshairRotationSpeed;
+end;
+--#endregion
 
-                for index = 1, #BackpackChildren do
-                    local Oath = BackpackChildren[index]
-                    if Oath.ClassName == 'Folder' and Oath.Name:find('Talent:Oath') then
-                        local OathName = Oath.Name:gsub('Talent:Oath: ', '')
-                        table.insert(Extra, OathName);
-                    end
-                end
+--#region Framework
+local WallPenRaycast;
+WallPenRaycast = function(P0, P1, Target, PassCount)
+    PassCount = PassCount or 0;
+    local Delta = (P1 - P0);
+    if (Delta.Magnitude > 5e3) then return "Negative"; end;--Target is too far.
+    local RaycastParams = DendroESP.RaycastParams;
+    local Cast = Raycast(Workspace, P0, Delta, RaycastParams);
+    --If it hit nothing, and it's the first pass, return "Positive".
+    --If it's not the first pass, return "Neutral".
+    if (not Cast) then return (PassCount == 0 and "Positive") or "Neutral"; end;
+    if (Cast.Instance == Target or Cast.Instance:IsDescendantOf(Target)) then
+        return (PassCount == 0 and "Positive") or "Neutral";
+        --If the hit instance is part of the character, then return "Positive" if it's the first pass.
+        --If it's not the first pass, return "Neutral".
+    end;
+    local WallPenThickness = DendroESP.WallPenThickness;
+    if (WallPenThickness == 0) then return "Negative"; end;
+    Delta = Delta.Unit;
+    local P2 = Cast.Position + Delta * WallPenThickness;
+    Cast = Raycast(Workspace, P2, -Delta, RaycastParams);
+    if (not Cast or PassCount >= 5) then return "Negative"; end;
+    return WallPenRaycast(Cast.Position, P1, Target, PassCount + 1);
+end;
 
-                if #Extra > 0 then Name = Name .. ' [' .. table.concat(Extra, '-') .. ']'; end
-            end
+local function PreparePart(self)
+    local Part = self.Part;
+    local PartCF = Part.CFrame;
+    local Bone = Part:FindFirstChildOfClass("Bone");
+    if (Bone) then PartCF = Bone.TransformedWorldCFrame; end;
+    PartCF = PartCF * self.Offset3D;
+    local Corners = GetCorners({CFrame = PartCF, Size = Part.Size});
 
-			return Name;
-		end;
-	};
+    local _ = Corners[1];
+    local _, OnScreen = ToScreenPoint(Camera, Corners[1]);
+    local MinX, MaxX, MinY, MaxY = _.X, _.X, _.Y, _.Y;
+    local OffsetX, OffsetY = self.Offset2D.X, self.Offset2D.Y;
+    for _ = 2, #Corners do
+        local Corner, COScreen = ToScreenPoint(Camera, Corners[_]);
+        local X, Y = Corner.X + OffsetX, Corner.Y + OffsetY;
+        MinX = (MinX > X and X) or MinX;
+        MaxX = (MaxX < X and X) or MaxX;
+        MinY = (MinY > Y and Y) or MinY;
+        MaxY = (MaxY < Y and Y) or MaxY;
+        OnScreen = OnScreen or COScreen;
+    end;
+    self.OnScreen = OnScreen;
+    self.Min2DPoint, self.Max2DPoint = NewV2(MinX, MinY), NewV2(MaxX, MaxY);
+    self.Center2D = NewV2(MaxX + MinX, MaxY + MinY) / 2;
+    self.MinX, self.MinY, self.MaxX, self.MaxY = MinX, MinY, MaxX, MaxY;
+    self.CFrame = PartCF;
+    self.CrosshairCenter3D = (PartCF * self.CrosshairOffset).Position;
+    self.CrosshairCenter2D, self.CrosshairOnScreen = ToScreenPoint(Camera, self.CrosshairCenter3D);
+    self.CrosshairCenter2D = V3ToV2(self.CrosshairCenter2D);
+    if (not self.RenderState) then
+        self.CurrentState = "Positive";
+        self.CurrentColor = self.PositiveColor;
+        return true;
+    end;
 
-    [5735553160] = { -- Deepwoken [Depths]
-		CustomPlayerTag = function(Player)
-			local Name = '';
-			CharacterName = Player:GetAttribute'CharacterName'; -- could use leaderstats but lazy
+    local RenderState = WallPenRaycast(BulletSource, Part.Position, Part);
+    self.CurrentState = RenderState;
+    self.CurrentColor = self[RenderState.."Color"];
+    if (RenderState ~= "Negative") then NonNegativeTables[#NonNegativeTables+1] = (OnScreen and self) or nil; end;
+    return true;
+end;
 
-			if not IsStringEmpty(CharacterName) then
-				Name = ('\n[%s]'):format(CharacterName);
-				local Character = GetCharacter(Player);
-				local Extra = {};
+local function PrepareModel(self)
+    local Model = self.Model or self.Character;
+    local ModelCF, ModelSize = Model:GetBoundingBox();
+    local Bone = Model:FindFirstChildOfClass("Bone");
+    if (Bone) then ModelCF = Bone.TransformedWorldCFrame; end;
+    ModelCF = ModelCF * self.Offset3D;
+    local Corners = GetCorners({CFrame = ModelCF, Size = ModelSize});
+    self.ModelCF, self.ModelSize = ModelCF, ModelSize;
+    self.CFrame = ModelCF;
 
-				if Character then
-					local Blood, Armor = Character:FindFirstChild('Blood'), Character:FindFirstChild('Armor');
+    local _ = Corners[1];
+    local _, OnScreen = ToScreenPoint(Camera, Corners[1]);
+    local MinX, MaxX, MinY, MaxY = _.X, _.X, _.Y, _.Y;
+    local OffsetX, OffsetY = self.Offset2D.X, self.Offset2D.Y;
+    for _ = 2, #Corners do
+        local Corner, COScreen = ToScreenPoint(Camera, Corners[_]);
+        local X, Y = Corner.X + OffsetX, Corner.Y + OffsetY;
+        MinX = (MinX > X and X) or MinX;
+        MaxX = (MaxX < X and X) or MaxX;
+        MinY = (MinY > Y and Y) or MinY;
+        MaxY = (MaxY < Y and Y) or MaxY;
+        OnScreen = OnScreen or COScreen;
+    end;
+    self.OnScreen = OnScreen;
+    self.Min2DPoint, self.Max2DPoint = NewV2(MinX, MinY), NewV2(MaxX, MaxY);
+    self.Center2D = NewV2(MaxX + MinX, MaxY + MinY) / 2;
+    self.MinX, self.MinY, self.MaxX, self.MaxY = MinX, MinY, MaxX, MaxY;
+    self.CrosshairCenter3D = (ModelCF * self.CrosshairOffset).Position;
+    self.CrosshairCenter2D, self.CrosshairOnScreen = ToScreenPoint(Camera, self.CrosshairCenter3D);
+    self.CrosshairCenter2D = V3ToV2(self.CrosshairCenter2D);
+    if (not self.RenderState) then
+        self.CurrentState = "Positive";
+        self.CurrentColor = self.PositiveColor;
+        return true;
+    end;
 
-					if Blood and Blood.ClassName == 'DoubleConstrainedValue' then
-						table.insert(Extra, ('B%d'):format(Blood.Value));
-					end
+    local RenderState = WallPenRaycast(BulletSource, ModelCF.Position, Model);
+    self.CurrentState = RenderState;
+    self.CurrentColor = self[RenderState.."Color"];
+    if (RenderState ~= "Negative") then NonNegativeTables[#NonNegativeTables+1] = (OnScreen and self) or nil; end;
+    return true;
+end;
 
-					if Armor and Armor.ClassName == 'DoubleConstrainedValue' then
-						table.insert(Extra, ('A%d'):format(math.floor(Armor.Value / 10)));
-					end
-				end
+local function PrepareCharacter(self)
+    local Character = self.Character;
+    local RootPart = GetRootPart(Character);
+    local CharacterCF = (RootPart and RootPart.CFrame);
+    if (not RootPart) then return; end;
+    local Bone = RootPart:FindFirstChildOfClass("Bone");
+    if (Bone) then CharacterCF = Bone.TransformedWorldCFrame; end;
+    CharacterCF = CharacterCF * self.Offset3D;
+    local Corners = GetCorners({CFrame = CharacterCF - Vector3.new(0, 0.5, 0), Size = Vector3.new(4, 5, 1)});
+    self.RootPart, self.CharacterCF, self.CharacterVertices = RootPart, CharacterCF, Corners;
+    self.CFrame = CharacterCF;
 
-				local BackpackChildren = Player.Backpack:GetChildren()
+    local _, OnScreen = ToScreenPoint(Camera, Corners[1]);
+    local MinX, MaxX, MinY, MaxY = _.X, _.X, _.Y, _.Y;
+    local OffsetX, OffsetY = self.Offset2D.X, self.Offset2D.Y;
+    for _ = 2, #Corners do
+        local Corner, COScreen = ToScreenPoint(Camera, Corners[_]);
+        local X, Y = Corner.X + OffsetX, Corner.Y + OffsetY;
+        MinX = (MinX > X and X) or MinX;
+        MaxX = (MaxX < X and X) or MaxX;
+        MinY = (MinY > Y and Y) or MinY;
+        MaxY = (MaxY < Y and Y) or MaxY;
+        OnScreen = OnScreen or COScreen;
+    end;
+    self.OnScreen = OnScreen;
+    self.Min2DPoint, self.Max2DPoint = NewV2(MinX, MinY), NewV2(MaxX, MaxY);
+    self.Center2D = NewV2(MaxX + MinX, MaxY + MinY) / 2;
+    self.MinX, self.MinY, self.MaxX, self.MaxY = MinX, MinY, MaxX, MaxY;
+    self.CrosshairCenter3D = (CharacterCF * self.CrosshairOffset).Position;
+    self.CrosshairCenter2D, self.CrosshairOnScreen = ToScreenPoint(Camera, self.CrosshairCenter3D);
+    self.CrosshairCenter2D = V3ToV2(self.CrosshairCenter2D);
+    if (not self.RenderState) then
+        self.CurrentState = "Positive";
+        self.CurrentColor = self.PositiveColor;
+        return true;
+    end;
 
-				for index = 1, #BackpackChildren do
-					local Oath = BackpackChildren[index]
-					if Oath.ClassName == 'Folder' and Oath.Name:find('Talent:Oath') then
-						local OathName = Oath.Name:gsub('Talent:Oath: ', '')
-						table.insert(Extra, OathName);
-					end
-				end
+    local RenderState = WallPenRaycast(BulletSource, CharacterCF.Position, Character);
+    self.CurrentState = RenderState;
+    self.CurrentColor = self[RenderState.."Color"];
+    if (RenderState ~= "Negative") then NonNegativeTables[#NonNegativeTables+1] = (OnScreen and self) or nil; end;
+    return true;
+end;
+--#endregion
 
-				if #Extra > 0 then Name = Name .. ' [' .. table.concat(Extra, '-') .. ']'; end
-			end
-
-			return Name;
-		end;
-	};
-
-	[3127094264] = {
-		CustomCharacter = function(Player)
-			if not _FIRST then
-				_FIRST = true
-				
-				pcall(function()
-					local GPM = rawget(require(LocalPlayer.PlayerScripts:WaitForChild('Client', 1e9):WaitForChild('Player', 1e9)), 'GetPlayerModel')
-					PList = debug.getupvalue(GPM, 1)
-				end)
-			end
-
-			if PList then
-				local Player = rawget(PList, Player.UserId)
-
-				if Player and Player.model then
-					return Player.model
-				end
-			end
-		end
-	}
+--#region Initiation
+local ESPs = {
+    BoundingBox = {ModelFlag = true};
+    Orthogonal = {ModelFlag = true};
+    Highlight = {ModelFlag = true};
+    Outline = {ModelFlag = true};
+    Vertex = {ModelFlag = true};
+    Shadow = {};
 };
+local RenderingTables = {};
+DendroESP.RenderingTables = RenderingTables;
+local function Render(self)
+    if (not self.Enabled) then return; end;
+    if (not self.Instance or not self.Instance.Parent) then self:Destroy(); end;
+    self:Prepare();
+    DrawTracer(self);
+    if (not self.OnScreen and self.Type ~= "Orthogonal") then return; end;
+    if (self.RenderBoundingBox) then ESPs.BoundingBox.Render(self); end;
+    self:MRender();
+    if (not self.OnScreen) then return; end;
+    DrawCrosshair(self, self.CrosshairCenter3D);
+    DrawRadialHitbox(self);
+    DrawHealth(self);
+    DrawText(self);
+end;
+local function RemoveRenderingTable(RenderingTable)
+    RenderingTables[RenderingTable.Instance] = nil;
+    RenderingTable.Enabled = false;
+    if (RenderingTable.Highlight) then
+        RenderingTable.Highlight:Destroy();
+        RenderingTable.Highlight = nil;
+    end;
+    if (RenderingTable.ReplicaDict) then
+        for _, Replica in pairs(RenderingTable.ReplicaDict) do
+            Replica:Destroy();
+            RenderingTable[_] = nil;
+        end;
+    end;
+    local Connections = RenderingTable.Connections;
+    if (Connections) then
+        for _ = 1, #Connections do
+            Connections[_]:Disconnect();
+            Connections[_] = nil;
+        end;
+    end;
+end;
+local function CreateRenderingTable(Instance, Type)
+    if (RenderingTables[Instance]) then return RenderingTables[Instance]; end;
+    local RenderingTable = {
+        Enabled = true;
+        Thickness = 1;
+        Opacity = 1;
+        Offset3D = NewCF();
+        Offset2D = NewV2();
 
-if Modules[game.PlaceId] ~= nil or Modules[game.GameId] ~= nil then
-	local Module = Modules[game.PlaceId] or Modules[game.GameId]
+        PositiveColor = DendroESP.PositiveColor;
+        NegativeColor = DendroESP.NegativeColor;
+        NeutralColor = DendroESP.NeutralColor;
+        RenderState = DendroESP["Render"..Type.."State"];
 
-	if Module.Initialize then
-		Module.Initialize()
-	end
+        CrosshairOffset = NewCF(0, 2, 0);
+        CrosshairRotation = 45;
+        CrosshairRotationSpeed = 0.25;
+        CrosshairEnabled = false;
 
-	CustomPlayerTag = Module.CustomPlayerTag or nil
-	CustomESP = Module.CustomESP or nil
-	CustomCharacter = Module.CustomCharacter or nil
-	GetHealth = Module.GetHealth or nil
-	GetAliveState = Module.GetAliveState or nil
-	CustomRootPartName = Module.CustomRootPartName or nil
-end
+        Text = "";
+        TextSize = 16;
+        TextAlignment = Enum.TextXAlignment.Left;
+        TextOutlineVisible = false;
+        TextOutlineColor = Color3.new();
+        Font = Drawing.Fonts.Monospace;
+        TextPadding = NewV2(0, 6);
+        TextEnabled = false;
 
-function GetCharacter(Player)
-	return CustomCharacter and CustomCharacter(Player) or Player.Character
-end
+        TracerEnabled = false;
+        NegativeTrace = false;
 
-function GetMouseLocation()
-	return UserInputService:GetMouseLocation();
-end
+        Health = 0;
+        MaxHealth = 100;
+        HealthBarSize = 0;
+        HealthBarThickness = 2;
+        HealthBarPadding = 6;
+        HealthEnabled = false;
 
-function MouseHoveringOver(Values)
-	local X1, Y1, X2, Y2 = Values[1], Values[2], Values[3], Values[4]
-	local MLocation = GetMouseLocation();
-	return (MLocation.x >= X1 and MLocation.x <= (X1 + (X2 - X1))) and (MLocation.y >= Y1 and MLocation.y <= (Y1 + (Y2 - Y1)));
-end
+        RadialHitbox = 0;
+        MouseInRadius = false;
+        RadiusOnCrosshair = false;
 
-function GetTableData(t) -- basically table.foreach i dont even know why i made this
-	if typeof(t) ~= 'table' then return end
+        Type = Type;
+        [Type] = Instance;
+        Instance = Instance;
+        Render = Render;
+        Destroy = RemoveRenderingTable;
+    };
+    RenderingTables[Instance] = RenderingTable;
+    return RenderingTable;
+end;
+--#endregion
 
-	return setmetatable(t, {
-		__call = function(t, func)
-			if typeof(func) ~= 'function' then return end;
-			for i, v in pairs(t) do
-				pcall(func, i, v);
-			end
-		end;
-	});
-end
-local function Format(format, ...)
-	return string.format(format, ...);
-end
-function CalculateValue(Min, Max, Percent)
-	return Min + math.floor(((Max - Min) * Percent) + .5);
-end
+--#region ESP Modes
 
-function NewDrawing(InstanceName)
-	local Instance = Drawing.new(InstanceName)
+--#region BoundingBox
+function ESPs.BoundingBox:Render()
+    local Thicknes, Opacity, Color = self.Thickness, self.Opacity, self.CurrentColor;
+    local Box = CreateDrawing("Square");
+    Box.Thickness = Thicknes;
+    Box.Size = self.Max2DPoint - self.Min2DPoint;
+    Box.Position = self.Min2DPoint;
+    Box.Color = Color;
+    Box.Visible = true;
+    Box.Transparency = Opacity;
+end;
+--#endregion
+--#region Vertex
+function ESPs.Vertex.RenderPart(Part, Thickness, Transparency, Color)
+    if (type(Part) ~= "table" and not Part:IsA("BasePart")) then return; end;
+    local Edges = GetEdgesNoOverlap(Part);
 
-	return (function(Properties)
-		for i, v in pairs(Properties) do
-			pcall(Set, Instance, i, v)
-		end
+    for _ = 1, #Edges do
+        local Edge = Edges[_];
+        DrawLine(Edge[1], Edge[2], Color, Thickness, Transparency);
+    end;
+end;
 
-		return Instance
-	end)
-end
+function ESPs.Vertex:Render()
+    local Thickness, Transparency, Color = self.Thickness, 1 - self.Opacity, self.CurrentColor;
+    if (self.Type == "Part") then
+        ESPs.Vertex.RenderPart(self.Part, Thickness, Transparency, Color);
+    elseif (self.Type == "Character") then
+        local Parts = self.Instance[self.RenderDescendants and "GetDescendants" or "GetChildren"](self.Instance);
+        local RenderPart = ESPs.Vertex.RenderPart;
+        for _ = 1, #Parts do
+            RenderPart(Parts[_], Thickness, Transparency, Color);
+        end;
+    else
+        local Model = self.Model;
+        local Psuedopart = {Model:GetBoundingBox()};
+        Psuedopart.CFrame, Psuedopart.Size = Psuedopart[1], Psuedopart[2];
+        ESPs.Vertex.RenderPart(Psuedopart, Thickness, Transparency, Color);
+    end;
+end;
+--#endregion
+--#region Outline
+function ESPs.Outline.OldRenderPart(Part, Thickness, Transparency, Color)
+    if (type(Part) ~= "table" and not Part:IsA("BasePart")) then return; end;
+    local Edges = GetShadowPolygon(Part, Camera.CFrame.Position);
 
-function Menu:AddMenuInstance(Name, DrawingType, Properties)
-	local Instance;
+    for _ = 1, #Edges do
+        local Edge = Edges[_];
+        DrawLine(Edge[1], Edge[2], Color, Thickness, Transparency);
+    end;
+end;
 
-	if shared.MenuDrawingData.Instances[Name] ~= nil then
-		Instance = shared.MenuDrawingData.Instances[Name];
-		for i, v in pairs(Properties) do
-			pcall(Set, Instance, i, v);
-		end
-	else
-		Instance = NewDrawing(DrawingType)(Properties);
-	end
+function ESPs.Outline.RenderPart(Part, Thickness, Transparency, Color)
+    if (type(Part) ~= "table" and not Part:IsA("BasePart")) then return; end;
+    local Edges = GetShadowPolygon(Part, Camera.CFrame.Position);
 
-	shared.MenuDrawingData.Instances[Name] = Instance;
+    for Start, End in pairs(Edges) do
+        if (Start == 0) then continue; end;
+        DrawLine(Start, End, Color, Thickness, Transparency);
+    end;
+    if (true) then return; end;
+    local Start, End = next(Edges);
+    for _ = 1, 6 do
+        if (not End) then break; end;
+        DrawLine(Start, End, Color, Thickness, Transparency);
+        Start = End;
+        End = Edges[Start];
+        if (Start == Edges[0]) then break; end;
+    end;
+end;
 
-	return Instance;
-end
-function Menu:UpdateMenuInstance(Name)
-	local Instance = shared.MenuDrawingData.Instances[Name];
-	if Instance ~= nil then
-		return (function(Properties)
-			for i, v in pairs(Properties) do
-				pcall(Set, Instance, i, v);
-			end
-			return Instance;
-		end)
-	end
-end
-function Menu:GetInstance(Name)
-	return shared.MenuDrawingData.Instances[Name];
-end
+function ESPs.Outline:Render()
+    local Thickness, Transparency, Color = self.Thickness, 1 - self.Opacity, self.CurrentColor;
+    if (self.Type == "Part") then
+        ESPs.Outline.RenderPart(self.Part, Thickness, Transparency, Color);
+    elseif (self.Type == "Character") then
+        local Parts = self.Instance[self.RenderDescendants and "GetDescendants" or "GetChildren"](self.Instance);
+        local RenderPart = ESPs.Outline.RenderPart;
+        for _ = 1, #Parts do
+            RenderPart(Parts[_], Thickness, Transparency, Color);
+        end;
+    else
+        local Model = self.Model;
+        local Psuedopart = {Model:GetBoundingBox()};
+        Psuedopart.CFrame, Psuedopart.Size = Psuedopart[1], Psuedopart[2];
+        ESPs.Outline.RenderPart(Psuedopart, Thickness, Transparency, Color);
+    end;
+end;
+--#endregion
+--#region Shadow
+local function ProjectPoint(Point, Source)
+    local Direction = (Point - Source).Unit * 5000;
+    local Raycast = Raycast(Workspace, Source, Direction, DendroESP.RaycastParams);
+    return (Raycast and Raycast.Position) or Source + Direction;
+end;
 
-local Options = setmetatable({}, {
-	__call = function(t, ...)
-		local Arguments = {...};
-		local Name = Arguments[1];
-		OIndex = OIndex + 1;
-		rawset(t, Name, setmetatable({
-			Name			= Arguments[1];
-			Text			= Arguments[2];
-			Value			= Arguments[3];
-			DefaultValue	= Arguments[3];
-			AllArgs			= Arguments;
-			Index			= OIndex;
-		}, {
-			__call = function(t, v, force)
-				local self = t;
+local function ProjectLine(Line, Source)
+    Line[1] = ProjectPoint(Line[1], Source);
+    Line[2] = ProjectPoint(Line[2], Source);
+    return Line;
+end;
 
-				if typeof(t.Value) == 'function' then
-					t.Value();
-				elseif typeof(t.Value) == 'EnumItem' then
-					local BT = Menu:GetInstance(Format('%s_BindText', t.Name));
-					if not force then
-						Binding = true;
-						local Val = 0
-						while Binding do
-							wait();
-							Val = (Val + 1) % 17;
-							BT.Text = Val <= 8 and '|' or '';
-						end
-					end
-					t.Value = force and v or BindedKey;
-					if BT and t.BasePosition and t.BaseSize then
-						BT.Text = tostring(t.Value):match'%w+%.%w+%.(.+)';
-						BT.Position = t.BasePosition + V2New(t.BaseSize.X - BT.TextBounds.X - 20, -10);
-					end
-				else
-					local NewValue = v;
-					if NewValue == nil then NewValue = not t.Value; end
-					rawset(t, 'Value', NewValue);
+local function ToScreenLine(Line)
+    Line[1] = V3ToV2(ToScreenPoint(Camera, Line[1]));
+    Line[2] = V3ToV2(ToScreenPoint(Camera, Line[2]));
+end;
 
-					if Arguments[2] ~= nil and Menu:GetInstance'TopBar'.Visible then
-						if typeof(Arguments[3]) == 'number' then
-							local AMT = Menu:GetInstance(Format('%s_AmountText', t.Name));
-							if AMT then
-								AMT.Text = tostring(t.Value);
-							end
-						else
-							local Inner = Menu:GetInstance(Format('%s_InnerCircle', t.Name));
-							if Inner then Inner.Visible = t.Value; end
-						end
-					end
-				end
-			end;
-		}));
-	end;
-})
+function ESPs.Shadow.RenderEdges(Edges, Color, Thickness, Transparency)
+    for _ = 1, #Edges do
+        local Edge3D = Edges[_];
+        local StartLine, EndLine = {Edge3D[1], GetTPoint(Edge3D[1], Edge3D[2], 0.01)}, {Edge3D[2], GetTPoint(Edge3D[1], Edge3D[2], 0.99)};
+        ProjectLine(StartLine, BulletSource); ProjectLine(EndLine, BulletSource);
+        ToScreenLine(StartLine); ToScreenLine(EndLine);
+        local Midpoint = GetIntersection(StartLine, EndLine);
+        local Distance, MaxDistance = 
+        math.max((StartLine[1] - Midpoint).Magnitude, (EndLine[1] - Midpoint).Magnitude),
+        (StartLine[1] - EndLine[1]).Magnitude;
 
-function Load()
-	local _, Result = pcall(readfile, OptionsFile);
-	
-	if _ then -- extremely ugly code yea i know but i dont care p.s. i hate pcall
-		local _, Table = pcall(HttpService.JSONDecode, HttpService, Result);
-		if _ and typeof(Table) == 'table' then
-			for i, v in pairs(Table) do
-				if typeof(Options[i]) == 'table' and Options[i].Value ~= nil and (typeof(Options[i].Value) == 'boolean' or typeof(Options[i].Value) == 'number') then
-					Options[i].Value = v.Value;
-					pcall(Options[i], v.Value);
-				end
-			end
+        if (Distance >= MaxDistance) then
+            DrawLine(StartLine[1], EndLine[1], Color, Thickness, Transparency, true);
+        else
+            DrawLine(StartLine[1], Midpoint, Color, Thickness, Transparency, true);
+            DrawLine(Midpoint, EndLine[1], Color, Thickness, Transparency, true);
+        end;
+    end;
+end;
 
-			if Table.TeamColor then TeamColor = Color3.new(Table.TeamColor.R, Table.TeamColor.G, Table.TeamColor.B) end
-			if Table.EnemyColor then EnemyColor = Color3.new(Table.EnemyColor.R, Table.EnemyColor.G, Table.EnemyColor.B) end
-
-			if typeof(Table.MenuKey) == 'string' then Options.MenuKey(Enum.KeyCode[Table.MenuKey], true) end
-			if typeof(Table.ToggleKey) == 'string' then Options.ToggleKey(Enum.KeyCode[Table.ToggleKey], true) end
-		end
-	end
-end
-
-Options('Enabled', 'ESP Enabled', true);
-Options('ShowTeam', 'Show Team', true);
-Options('ShowTeamColor', 'Show Team Color', false);
-Options('ShowName', 'Show Names', true);
-Options('ShowDistance', 'Show Distance', true);
-Options('ShowHealth', 'Show Health', true);
-Options('ShowBoxes', 'Show Boxes', true);
-Options('ShowTracers', 'Show Tracers', true);
-Options('ShowDot', 'Show Head Dot', false);
-Options('VisCheck', 'Visibility Check', false);
-Options('Crosshair', 'Crosshair', false);
-Options('TextOutline', 'Text Outline', true);
--- Options('Rainbow', 'Rainbow Mode', false);
-Options('TextSize', 'Text Size', syn and 18 or 14, 10, 24); -- cuz synapse fonts look weird???
-Options('MaxDistance', 'Max Distance', 2500, 100, 25000);
-Options('RefreshRate', 'Refresh Rate (ms)', 5, 1, 200);
-Options('YOffset', 'Y Offset', 0, -200, 200);
-Options('MenuKey', 'Menu Key', Enum.KeyCode.F4, 1);
-Options('ToggleKey', 'Toggle Key', Enum.KeyCode.F3, 1);
-Options('ChangeColors', SENTINEL_LOADED and 'Sentinel Unsupported' or 'Change Colors', function()
-	if SENTINEL_LOADED then return end
-
-	SubMenu:Show(GetMouseLocation(), 'Unnamed Colors', {
-		{
-			Type = 'Color'; Text = 'Team Color'; Color = TeamColor;
-
-			Function = function(Circ, Position)
-				if tick() - ColorPicker.LastGenerated < 1 then return; end
-
-				if shared.CurrentColorPicker then shared.CurrentColorPicker:Dispose() end
-				local ColorPicker = ColorPicker.new(Position - V2New(-10, 50));
-				CurrentColorPicker = ColorPicker;
-				shared.CurrentColorPicker = CurrentColorPicker;
-				ColorPicker.ColorChanged:Connect(function(Color) Circ.Color = Color TeamColor = Color Options.TeamColor = Color end);
-			end
-		};
-		{
-			Type = 'Color'; Text = 'Enemy Color'; Color = EnemyColor;
-
-			Function = function(Circ, Position)
-				if tick() - ColorPicker.LastGenerated < 1 then return; end
-
-				if shared.CurrentColorPicker then shared.CurrentColorPicker:Dispose() end
-				local ColorPicker = ColorPicker.new(Position - V2New(-10, 50));
-				CurrentColorPicker = ColorPicker;
-				shared.CurrentColorPicker = CurrentColorPicker;
-				ColorPicker.ColorChanged:Connect(function(Color) Circ.Color = Color EnemyColor = Color Options.EnemyColor = Color end);
-			end
-		};
-		{
-			Type = 'Button'; Text = 'Reset Colors';
-
-			Function = function()
-				EnemyColor = Color3.new(1, 0, 0);
-				TeamColor = Color3.new(0, 1, 0);
-
-				local C1 = Menu:GetInstance'Sub-ColorPreview.1'; if C1 then C1.Color = TeamColor end
-				local C2 = Menu:GetInstance'Sub-ColorPreview.2'; if C2 then C2.Color = EnemyColor end
-			end
-		};
-		{
-			Type = 'Button'; Text = 'Rainbow Mode';
-
-			Function = function()
-				Rainbow = not Rainbow;
-			end
-		};
-	});
-end, 2);
-Options('ResetSettings', 'Reset Settings', function()
-	for i, v in pairs(Options) do
-		if Options[i] ~= nil and Options[i].Value ~= nil and Options[i].Text ~= nil and (typeof(Options[i].Value) == 'boolean' or typeof(Options[i].Value) == 'number' or typeof(Options[i].Value) == 'EnumItem') then
-			Options[i](Options[i].DefaultValue, true);
-		end
-	end
-end, 5);
-Options('LoadSettings', 'Load Settings', Load, 4);
-Options('SaveSettings', 'Save Settings', function()
-	local COptions = {};
-
-	for i, v in pairs(Options) do
-		COptions[i] = v;
-	end
-	
-	if typeof(TeamColor) == 'Color3' then COptions.TeamColor = { R = TeamColor.R; G = TeamColor.G; B = TeamColor.B } end
-	if typeof(EnemyColor) == 'Color3' then COptions.EnemyColor = { R = EnemyColor.R; G = EnemyColor.G; B = EnemyColor.B } end
-	
-	if typeof(COptions.MenuKey.Value) == 'EnumItem' then COptions.MenuKey = COptions.MenuKey.Value.Name end
-	if typeof(COptions.ToggleKey.Value) == 'EnumItem' then COptions.ToggleKey = COptions.ToggleKey.Value.Name end
-
-	writefile(OptionsFile, HttpService:JSONEncode(COptions));
-end, 3);
-
-Load(1);
-
-Options('MenuOpen', nil, true);
-
-local function Combine(...)
-	local Output = {};
-	for i, v in pairs{...} do
-		if typeof(v) == 'table' then
-			table.foreach(v, function(i, v)
-				Output[i] = v;
-			end)
-		end
-	end
-	return Output
-end
-
-function LineBox:Create(Properties)
-	local Box = { Visible = true }; -- prevent errors not really though dont worry bout the Visible = true thing
-
-	local Properties = Combine({
-		Transparency	= 1;
-		Thickness		= 3;
-		Visible			= true;
-	}, Properties);
-
-	if shared.am_ic3 then -- sory just my preference, dynamic boxes will be optional in unnamed esp v2
-		Box['OutlineSquare']= NewDrawing'Square'(Properties);
-		Box['Square'] 		= NewDrawing'Square'(Properties);
-	elseif QUAD_SUPPORTED_EXPLOIT then
-		Box['Quad']			= NewDrawing'Quad'(Properties);
-	else
-		Box['TopLeft']		= NewDrawing'Line'(Properties);
-		Box['TopRight']		= NewDrawing'Line'(Properties);
-		Box['BottomLeft']	= NewDrawing'Line'(Properties);
-		Box['BottomRight']	= NewDrawing'Line'(Properties);
-	end
-
-	function Box:Update(CF, Size, Color, Properties, Parts)
-		if not CF or not Size then return end
-
-		if shared.am_ic3 and typeof(Parts) == 'table' then
-			local AllCorners = {};
-			
-			for i, v in pairs(Parts) do
-				-- if not v:IsA'BasePart' then continue end
-				
-				local CF, Size = v.CFrame, v.Size;
-				-- CF, Size = v.Parent:GetBoundingBox();
-
-				local Corners = {
-					Vector3.new(CF.X + Size.X / 2, CF.Y + Size.Y / 2, CF.Z + Size.Z / 2);
-					Vector3.new(CF.X - Size.X / 2, CF.Y + Size.Y / 2, CF.Z + Size.Z / 2);
-					Vector3.new(CF.X - Size.X / 2, CF.Y - Size.Y / 2, CF.Z - Size.Z / 2);
-					Vector3.new(CF.X + Size.X / 2, CF.Y - Size.Y / 2, CF.Z - Size.Z / 2);
-					Vector3.new(CF.X - Size.X / 2, CF.Y + Size.Y / 2, CF.Z - Size.Z / 2);
-					Vector3.new(CF.X + Size.X / 2, CF.Y + Size.Y / 2, CF.Z - Size.Z / 2);
-					Vector3.new(CF.X - Size.X / 2, CF.Y - Size.Y / 2, CF.Z + Size.Z / 2);
-					Vector3.new(CF.X + Size.X / 2, CF.Y - Size.Y / 2, CF.Z + Size.Z / 2);
-				};
-
-				for i, v in pairs(Corners) do
-					table.insert(AllCorners, v);
-				end
-
-				-- break
-			end
-
-			local xMin, yMin = Camera.ViewportSize.X, Camera.ViewportSize.Y;
-			local xMax, yMax = 0, 0;
-			local Vs = true;
-
-			for i, v in pairs(AllCorners) do				
-				local Position, V = WorldToViewport(v);
-
-				if VS and not V then Vs = false break end
-
-				if Position.X > xMax then
-					xMax = Position.X;
-				end
-				if Position.X < xMin then
-					xMin = Position.X;
-				end
-				if Position.Y > yMax then
-					yMax = Position.Y;
-				end
-				if Position.Y < yMin then
-					yMin = Position.Y;
-				end
-			end
-
-			local xSize, ySize = xMax - xMin, yMax - yMin;
-
-			local Outline = Box['OutlineSquare'];
-			local Square = Box['Square'];
-			Outline.Visible = Vs;
-			Square.Visible = Vs;
-			Square.Position = V2New(xMin, yMin);
-			Square.Color	= Color;
-			Square.Thickness = math.floor(Outline.Thickness * 0.3);
-			-- Square.Position = V2New(xMin, yMin);
-			Square.Size = V2New(xSize, ySize);
-			Outline.Position = Square.Position;
-			Outline.Size = Square.Size;
-			Outline.Color = Color3.new(0.12, 0.12, 0.12);
-			Outline.Transparency = 0.75;
-
-			return
-		end
-		
-		local TLPos, Visible1	= WorldToViewport((CF * CFrame.new( Size.X,  Size.Y, 0)).Position);
-		local TRPos, Visible2	= WorldToViewport((CF * CFrame.new(-Size.X,  Size.Y, 0)).Position);
-		local BLPos, Visible3	= WorldToViewport((CF * CFrame.new( Size.X, -Size.Y, 0)).Position);
-		local BRPos, Visible4	= WorldToViewport((CF * CFrame.new(-Size.X, -Size.Y, 0)).Position);
-
-		local Quad = Box['Quad'];
-
-		if QUAD_SUPPORTED_EXPLOIT then
-			if Visible1 and Visible2 and Visible3 and Visible4 then
-				Quad.Visible = true;
-				Quad.Color	= Color;
-				Quad.PointA = V2New(TLPos.X, TLPos.Y);
-				Quad.PointB = V2New(TRPos.X, TRPos.Y);
-				Quad.PointC = V2New(BRPos.X, BRPos.Y);
-				Quad.PointD = V2New(BLPos.X, BLPos.Y);
-			else
-				Box['Quad'].Visible = false;
-			end
-		else
-			Visible1 = TLPos.Z > 0 -- (commented | reason: random flashes);
-			Visible2 = TRPos.Z > 0 -- (commented | reason: random flashes);
-			Visible3 = BLPos.Z > 0 -- (commented | reason: random flashes);
-			Visible4 = BRPos.Z > 0 -- (commented | reason: random flashes);
-
-			-- ## BEGIN UGLY CODE
-			if Visible1 then
-				Box['TopLeft'].Visible		= true;
-				Box['TopLeft'].Color		= Color;
-				Box['TopLeft'].From			= V2New(TLPos.X, TLPos.Y);
-				Box['TopLeft'].To			= V2New(TRPos.X, TRPos.Y);
-			else
-				Box['TopLeft'].Visible		= false;
-			end
-			if Visible2 then
-				Box['TopRight'].Visible		= true;
-				Box['TopRight'].Color		= Color;
-				Box['TopRight'].From		= V2New(TRPos.X, TRPos.Y);
-				Box['TopRight'].To			= V2New(BRPos.X, BRPos.Y);
-			else
-				Box['TopRight'].Visible		= false;
-			end
-			if Visible3 then
-				Box['BottomLeft'].Visible	= true;
-				Box['BottomLeft'].Color		= Color;
-				Box['BottomLeft'].From		= V2New(BLPos.X, BLPos.Y);
-				Box['BottomLeft'].To		= V2New(TLPos.X, TLPos.Y);
-			else
-				Box['BottomLeft'].Visible	= false;
-			end
-			if Visible4 then
-				Box['BottomRight'].Visible	= true;
-				Box['BottomRight'].Color	= Color;
-				Box['BottomRight'].From		= V2New(BRPos.X, BRPos.Y);
-				Box['BottomRight'].To		= V2New(BLPos.X, BLPos.Y);
-			else
-				Box['BottomRight'].Visible	= false;
-			end
-			if Properties and typeof(Properties) == 'table' then
-				GetTableData(Properties)(function(i, v)
-					pcall(Set, Box['TopLeft'],		i, v);
-					pcall(Set, Box['TopRight'],		i, v);
-					pcall(Set, Box['BottomLeft'],	i, v);
-					pcall(Set, Box['BottomRight'],	i, v);
-				end)
-			end
-			-- ## END UGLY CODE
-		end
-	end
-	function Box:SetVisible(bool)
-		if shared.am_ic3 then
-			Box['Square'].Visible = bool;
-			Box['OutlineSquare'].Visible = bool;
-		elseif self.Quad then
-			self.Quad.Visible = false
-		elseif self.TopLeft and self.TopRight and self.BottomLeft and self.BottomRight then
-			self.TopLeft.Visible = bool
-			self.TopRight.Visible = bool
-			self.BottomLeft.Visible = bool
-			self.BottomRight.Visible = bool
-		end
-	end
-	function Box:Remove()
-		self:SetVisible(false)
-
-		if shared.am_ic3 then
-			Box['Square']:Remove()
-			Box['OutlineSquare']:Remove()
-		elseif self.Quad then
-			Box['Quad']:Remove()
-		elseif self.TopLeft and self.TopRight and self.BottomLeft and self.BottomRight then
-			self.TopLeft:Remove()
-			self.TopRight:Remove()
-			self.BottomLeft:Remove()
-			self.BottomRight:Remove()
-		end
-	end
-
-	return Box;
-end
-
-local Colors = {
-	White = Color3.fromHex'ffffff',
-	Primary = {
-		Main	= Color3.fromHex'424242',
-		Light	= Color3.fromHex'6d6d6d',
-		Dark	= Color3.fromHex'1b1b1b'
-	},
-	Secondary = {
-		Main	= Color3.fromHex'e0e0e0',
-		Light	= Color3.fromHex'ffffff',
-		Dark	= Color3.fromHex'aeaeae'
-	}
-}
-
-function Connections:Listen(Connection, Function)
-    local NewConnection = Connection:Connect(Function);
-    table.insert(self.Active, NewConnection);
-    return NewConnection;
-end
-
-function Connections:DisconnectAll()
-    for Index, Connection in pairs(self.Active) do
-        if Connection.Connected then
-            Connection:Disconnect();
-        end
-    end
+function ESPs.Shadow:Render()
+    local Thickness, Transparency, Color = self.Thickness, 1 - self.Opacity, self.CurrentColor;
+    local Source = ((self.Part and self.Part.CFrame) or self.CharacterCF).Position;
+    if (Raycast(Workspace, BulletSource, (Source - BulletSource), DendroESP.RaycastParams)) then
+        return ESPs.Outline.Render(self);
+    end;
+    if (self.Type == "Part") then
+        local Edges = GetShadowPolygon(self.Part, BulletSource);
+        ESPs.Shadow.RenderEdges(Edges, Color, Thickness, Transparency);
+    else
+        local Edges = GetCharacterVertices(self.CharacterCF);
+        ESPs.Shadow.RenderEdges(Edges, Color, Thickness, Transparency);
+    end;
+end;
+--#endregion
+--#region Orthogonal
+SetupViewport = function()
+    if (Viewport) then return; end;
+    local Parent = Instance.new("ScreenGui", CoreGui);
+    Parent.Name = "DendroESP";
+    Parent.IgnoreGuiInset = true;
+    Viewport = Instance.new("ViewportFrame", Parent);
+    Viewport.Name = "DendroOrthogonalESP";
+    Viewport.Size = UDim2.new(1, 0, 1, 0);
+    Viewport.Position = UDim2.new(0.5, 0, 0.5, 0);
+    Viewport.AnchorPoint = NewV2(0.5, 0.5);
+    Viewport.BackgroundTransparency = 1;
     
-    self.Active = {};
+    MouseUnlocker = Instance.new("TextButton", Parent);
+    MouseUnlocker.Size = UDim2.new(1, 0, 1, 0);
+    MouseUnlocker.Position = UDim2.new(0.5, 0, 0.5, 0);
+    MouseUnlocker.AnchorPoint = NewV2(0.5, 0.5);
+    MouseUnlocker.Text = "";
+    MouseUnlocker.BorderSizePixel = 0;
+    MouseUnlocker.Visible = false;
+
+    Parent.Enabled = true;
+    Parent.Parent = CoreGui;
+end;
+
+local function AddOrthogonalPart(Source, ReplicaDict)
+    local Replica = Source:Clone();
+    Replica:ClearAllChildren();
+    Replica.Parent = Viewport;
+    ReplicaDict[Source] = Replica;
+end;
+
+local function SetupOrthogonalESP(self)
+    if (self.ReplicaDict) then return self.ReplicaDict; end;
+    SetupViewport();
+    self.Material = Enum.Material.Metal;
+    self.Opacity = 0.5;
+    local ReplicaDict, Connections = {}, {};
+    self.ReplicaDict = ReplicaDict;
+    self.Connections = Connections;
+    if (self.Type == "Part") then
+        AddOrthogonalPart(self.Part, ReplicaDict);
+    else
+        local Descendants = self.Instance:GetDescendants();
+        for _ = 1, #Descendants do
+            local Descendant = Descendants[_];
+            if (not Descendant:IsA("BasePart")) then continue; end;
+            AddOrthogonalPart(Descendant, ReplicaDict);
+        end;
+        self.Instance.DescendantAdded:Connect(function(Descendant)
+            if (not Descendant:IsA("BasePart")) then return; end;
+            task.wait(1);
+            AddOrthogonalPart(Descendant, ReplicaDict);
+        end);
+    end;
+    return ReplicaDict;
 end
 
-function Signal.new()
-	local self = setmetatable({ _BindableEvent = Instance.new'BindableEvent' }, Signal);
-    
-	return self;
-end
-
-function Signal:Connect(Callback)
-    assert(typeof(Callback) == 'function', 'function expected; got ' .. typeof(Callback));
-
-	return self._BindableEvent.Event:Connect(function(...) Callback(...) end);
-end
-
-function Signal:Fire(...)
-    self._BindableEvent:Fire(...);
-end
-
-function Signal:Wait()
-    local Arguments = self._BindableEvent:Wait();
-
-    return Arguments;
-end
-
-function Signal:Disconnect()
-    if self._BindableEvent then
-        self._BindableEvent:Destroy();
-    end
-end
-
-local function GetMouseLocation()
-	return UserInputService:GetMouseLocation();
-end
-
-local function IsMouseOverDrawing(Drawing, MousePosition)
-	local TopLeft = Drawing.Position;
-	local BottomRight = Drawing.Position + Drawing.Size;
-    local MousePosition = MousePosition or GetMouseLocation();
-    
-    return MousePosition.X > TopLeft.X and MousePosition.Y > TopLeft.Y and MousePosition.X < BottomRight.X and MousePosition.Y < BottomRight.Y;
-end
-
-local ImageCache = {};
-
-local function SetImage(Drawing, Url)
-	local Data = IsSynapse and game:HttpGet(Url) or Url;
-
-	Drawing[IsSynapse and 'Data' or 'Uri'] = ImageCache[Url] or Data;
-	ImageCache[Url] = Data;
-    
-	if not IsSynapse then repeat wait() until Drawing.Loaded; end
-end
-
--- oh god unnamed esp needs an entire rewrite, someone make a better one pls im too lazy
--- btw the color picker was made seperately so it doesnt fit with the code of unnamed esp
-
-local function CreateDrawingsTable()
-    local Drawings = { __Objects = {} };
-    local Metatable = {};
-
-    function Metatable.__index(self, Index)
-        local Object = rawget(self.__Objects, Index);
-        
-        if not Object or (IsSynapse and not Object.__SELF.__OBJECT_EXISTS) then
-            local Type = Index:sub(1, Index:find'-' - 1);
-
-            Success, Object = pcall(Drawing.new, Type);
-
-            if not Object or not Success then return function() end; end
-
-            self.__Objects[Index] = setmetatable({ __SELF = Object; Type = Type }, {
-                __call = function(self, Properties)
-                    local Object = rawget(self, '__SELF'); if IsSynapse and not Object.__OBJECT_EXISTS then return false, 'render object destroyed'; end
-
-                    if Properties == false then
-                        Object.Visible = false;
-                        Object.Transparency = 0;
-                        Object:Remove();
-                        
-                        return true;
-                    end
-                    
-                    if typeof(Properties) == 'table' then
-                        for Property, Value in pairs(Properties) do
-                            local CanSet = true;
-
-                            if self.Type == 'Image' and not IsSynapse and Property == 'Size' and typeof(Value) == 'Vector2' then
-                                CanSet = false;
-
-                                spawn(function()
-                                    repeat wait() until Object.Loaded;
-                                    if not self.DefaultSize then rawset(self, 'DefaultSize', Object.Size) end
-
-                                    Property = 'ScaleFactor';
-                                    Value = Value.X / self.DefaultSize.X;
-
-                                    Object[Property] = Value
-                                end)
-                            end
-                            
-                            if CanSet then Object[Property] = Value end
-                        end
-                    end
-
-                    return Object;
-                end
-            });
-
-            Object.Visible = true;
-            Object.Transparency = 1; -- Transparency is really Opacity with drawing api (1 being visible, 0 being invisible)
-            
-            if Type == 'Text' then
-                if Drawing.Fonts then Object.Font = Drawing.Fonts.Monospace end
-                Object.Size = 20;
-                Object.Color = Color3.new(1, 1, 1);
-                Object.Center = true;
-				Object.Outline = true;
-				OutlineOpacity = 0.5;
-            elseif Type == 'Square' or Type == 'Rectangle' then
-                Object.Thickness = 2;
-                Object.Filled = false;
-            end
-
-            return self.__Objects[Index];
-        end
-
-        return Object;
-    end
-
-    function Metatable.__call(self, Delete, ...)
-        local Arguments = {Delete, ...};
-        
-        if Delete == false then
-            for Index, Drawing in pairs(rawget(self, '__Objects')) do
-                Drawing(false);
-            end
-        end
-    end
-
-    return setmetatable(Drawings, Metatable);
-end
-
-local Images = {}
-
-spawn(function()
-	Images.Ring = 'https://i.imgur.com/q4qx26f.png'
-	Images.Overlay = 'https://i.imgur.com/gOCxbsR.png'
-end)
-
-function ColorPicker.new(Position, Size, Color)
-	ColorPicker.LastGenerated = tick();
-	ColorPicker.Loading = true;
-
-    local self = { Color = Color or Color3.new(1, 1, 1); HSV = { H = 0, S = 1, V = 1 } };
-    local Drawings = CreateDrawingsTable();
-    local Position = Position or V2New();
-    local Size = Size or 150;
-    local Padding = { 10, 10, 10, 10 };
-    
-    self.ColorChanged = Signal.new();
-
-    local Background = Drawings['Square-Background'] {
-        Color = Color3.fromRGB(33, 33, 33);
-		Filled = false;
-		Visible = false;
-        Position = Position - V2New(Padding[4], Padding[1]);
-        Size = V2New(Size, Size) + V2New(Padding[4] + Padding[2], Padding[1] + Padding[3]);
-    };
-    local ColorPreview = Drawings['Circle-Preview'] {
-        Position = Position + (V2New(Size, Size) / 2);
-        Radius = Size / 2 - 8;
-        Filled = true;
-        Thickness = 0;
-        NumSides = 20;
-        Color = Color3.new(1, 0, 0);
-    };
-    local Main = Drawings['Image-Main'] {
-        Position = Position;
-        Size = V2New(Size, Size);
-    }; SetImage(Main, Images.Ring);
-    local Preview = Drawings['Square-Preview'] {
-        Position = Main.Position + (Main.Size / 4.5);
-        Size = Main.Size / 1.75;
-        Color = Color3.new(1, 0, 0);
-        Filled = true;
-        Thickness = 0;
-    };
-    local Overlay = Drawings['Image-Overlay'] {
-        Position = Preview.Position;
-        Size = Preview.Size;
-        Transparency = 1;
-    }; SetImage(Overlay, Images.Overlay);
-    local CursorOutline = Drawings['Circle-CursorOutline'] {
-        Radius = 4;
-        Thickness = 2;
-        Filled = false;
-        Color = Color3.new(0.2, 0.2, 0.2);
-        Position = V2New(Main.Position.X + Main.Size.X - 10, Main.Position.Y + (Main.Size.Y / 2));
-    };
-    local Cursor = Drawings['Circle-Cursor'] {
-        Radius = 3;
-        Transparency = 1;
-        Filled = true;
-        Color = Color3.new(1, 1, 1);
-        Position = CursorOutline.Position;
-    };
-    local CursorOutline = Drawings['Circle-CursorOutlineSquare'] {
-        Radius = 4;
-        Thickness = 2;
-        Filled = false;
-        Color = Color3.new(0.2, 0.2, 0.2);
-        Position = V2New(Preview.Position.X + Preview.Size.X - 2, Preview.Position.Y + 2);
-    };
-    Drawings['Circle-CursorSquare'] {
-        Radius = 3;
-        Transparency = 1;
-        Filled = true;
-        Color = Color3.new(1, 1, 1);
-        Position = CursorOutline.Position;
-    };
-    
-    function self:UpdatePosition(Input)
-        local MousePosition = V2New(Input.Position.X, Input.Position.Y + 33);
-
-        if self.MouseHeld then
-            if self.Item == 'Ring' then
-                local Main = self.Drawings['Image-Main'] ();
-                local Preview = self.Drawings['Square-Preview'] ();
-                local Bounds = Main.Size / 2;
-                local Center = Main.Position + Bounds;
-                local Relative = MousePosition - Center;
-                local Direction = Relative.unit;
-                local Position = Center + Direction * Main.Size.X / 2.15;
-                local H = (math.atan2(Position.Y - Center.Y, Position.X - Center.X)) * 60;
-                if H < 0 then H = 360 + H; end
-                H = H / 360;
-                self.HSV.H = H;
-                local EndColor = Color3.fromHSV(H, self.HSV.S, self.HSV.V); if EndColor ~= self.Color then self.ColorChanged:Fire(self.Color); end
-                local Pointer = self.Drawings['Circle-Cursor'] { Position = Position };
-                self.Drawings['Circle-CursorOutline'] { Position = Pointer.Position };
-                Bounds = Bounds * 2;
-                Preview.Color = Color3.fromHSV(H, 1, 1);
-                self.Color = EndColor;
-                self.Drawings['Circle-Preview'] { Color = EndColor };
-            elseif self.Item == 'HL' then
-                local Preview = self.Drawings['Square-Preview'] ();
-                local HSV = self.HSV;
-                local Position = V2New(math.clamp(MousePosition.X, Preview.Position.X, Preview.Position.X + Preview.Size.X), math.clamp(MousePosition.Y, Preview.Position.Y, Preview.Position.Y + Preview.Size.Y));
-                HSV.S = (Position.X - Preview.Position.X) / Preview.Size.X;
-                HSV.V = 1 - (Position.Y - Preview.Position.Y) / Preview.Size.Y;
-                local EndColor = Color3.fromHSV(HSV.H, HSV.S, HSV.V); if EndColor ~= self.Color then self.ColorChanged:Fire(self.Color); end
-                self.Color = EndColor;
-                self.Drawings['Circle-Preview'] { Color = EndColor };
-                local Pointer = self.Drawings['Circle-CursorSquare'] { Position = Position };
-                self.Drawings['Circle-CursorOutlineSquare'] { Position = Pointer.Position };
-            end
-        end
-    end
-
-    function self:HandleInput(Input, P, Type)
-        if Type == 'Began' then
-            if Input.UserInputType.Name == 'MouseButton1' then
-                local Main = self.Drawings['Image-Main'] ();
-                local SquareSV = self.Drawings['Square-Preview'] ();
-                local MousePosition = V2New(Input.Position.X, Input.Position.Y + 33);
-                self.MouseHeld = true;
-                local Bounds = Main.Size / 2;
-                local Center = Main.Position + Bounds;
-                local R = (MousePosition - Center);
-        
-                if R.Magnitude < Bounds.X and R.Magnitude > Bounds.X - 20 then
-                    self.Item = 'Ring';
-                end
-                
-                if MousePosition.X > SquareSV.Position.X and MousePosition.Y > SquareSV.Position.Y and MousePosition.X < SquareSV.Position.X + SquareSV.Size.X and MousePosition.Y < SquareSV.Position.Y + SquareSV.Size.Y then
-                    self.Item = 'HL';
-                end
-
-                self:UpdatePosition(Input, P);
-            end
-        elseif Type == 'Changed' then
-            if Input.UserInputType.Name == 'MouseMovement' then
-                self:UpdatePosition(Input, P);
-            end
-        elseif Type == 'Ended' and Input.UserInputType.Name == 'MouseButton1' then
-            self.Item = nil;
-        end
-	end
-	
-	function self:Dispose()
-		self.Drawings(false);
-		self.UpdatePosition = nil;
-		self.HandleInput = nil;
-		Connections:DisconnectAll(); -- scuffed tbh
-	end
-
-	Connections:Listen(UserInputService.InputBegan, function(Input, Process)
-		self:HandleInput(Input, Process, 'Began');
-	end);
-	Connections:Listen(UserInputService.InputChanged, function(Input, Process)
-		if Input.UserInputType.Name == 'MouseMovement' then
-			local MousePosition = V2New(Input.Position.X, Input.Position.Y + 33);
-			local Cursor = self.Drawings['Triangle-Cursor'] {
-				Filled = true;
-				Color = Color3.new(0.9, 0.9, 0.9);
-				PointA = MousePosition + V2New(0, 0);
-				PointB = MousePosition + V2New(12, 14);
-				PointC = MousePosition + V2New(0, 18);
-				Thickness = 0;
-			};
-		end
-		self:HandleInput(Input, Process, 'Changed');
-	end);
-	Connections:Listen(UserInputService.InputEnded, function(Input, Process)
-		self:HandleInput(Input, Process, 'Ended');
-		
-		if Input.UserInputType.Name == 'MouseButton1' then
-			self.MouseHeld = false
-		end
-	end)
-
-	ColorPicker.Loading = false
-
-    self.Drawings = Drawings
-
-    return self
-end
-
-function SubMenu:Show(Position, Title, Options)
-	self.Open = true;
-
-	local Visible = true;
-	local BasePosition = Position;
-	local BaseSize = V2New(200, 140);
-	local End = BasePosition + BaseSize;
-
-	self.Bounds = { BasePosition.X, BasePosition.Y, End.X, End.Y };
-
-	delay(0.025, function()
-		if not self.Open then return; end
-
-		Menu:AddMenuInstance('Sub-Main', 'Square', {
-			Size		= BaseSize;
-			Position	= BasePosition;
-			Filled		= false;
-			Color		= Colors.Primary.Main;
-			Thickness	= 3;
-			Visible		= Visible;
-		});
-	end);
-	Menu:AddMenuInstance('Sub-TopBar', 'Square', {
-		Position	= BasePosition;
-		Size		= V2New(BaseSize.X, 10);
-		Color		= Colors.Primary.Dark;
-		Filled		= true;
-		Visible		= Visible;
-	});
-	Menu:AddMenuInstance('Sub-TopBarTwo', 'Square', {
-		Position 	= BasePosition + V2New(0, 10);
-		Size		= V2New(BaseSize.X, 20);
-		Color		= Colors.Primary.Main;
-		Filled		= true;
-		Visible		= Visible;
-	});
-	Menu:AddMenuInstance('Sub-TopBarText', 'Text', {
-		Size 		= 20;
-		Position	= shared.MenuDrawingData.Instances['Sub-TopBarTwo'].Position + V2New(15, -3);
-		Text		= Title or '';
-		Color		= Colors.Secondary.Light;
-		Visible		= Visible;
-	});
-	Menu:AddMenuInstance('Sub-Filling', 'Square', {
-		Size		= BaseSize - V2New(0, 30);
-		Position	= BasePosition + V2New(0, 30);
-		Filled		= true;
-		Color		= Colors.Secondary.Main;
-		Transparency= .75;
-		Visible		= Visible;
-	});
-
-	if Options then
-		for Index, Option in pairs(Options) do -- currently only supports color and button(but color is a button so), planning on fully rewriting or something
-			local function GetName(Name) return ('Sub-%s.%d'):format(Name, Index) end
-			local Position = shared.MenuDrawingData.Instances['Sub-Filling'].Position + V2New(20, Index * 25 - 10);
-			-- local BasePosition	= shared.MenuDrawingData.Instances.Filling.Position + V2New(30, v.Index * 25 - 10);
-
-			if Option.Type == 'Color' then
-				local ColorPreview = Menu:AddMenuInstance(GetName'ColorPreview', 'Circle', {
-					Position = Position;
-					Color = Option.Color;
-					Radius = IsSynapse and 10 or 10;
-					NumSides = 10;
-					Filled = true;
-					Visible = true;
-				});
-				local Text = Menu:AddMenuInstance(GetName'Text', 'Text', {
-					Text = Option.Text;
-					Position = ColorPreview.Position + V2New(15, -8);
-					Size = 16;
-					Color = Colors.Primary.Dark;
-					Visible = true;
-				});
-				UIButtons[#UIButtons + 1] = {
-					FromSubMenu = true;
-					Option = function() return Option.Function(ColorPreview, BasePosition + V2New(BaseSize.X, 0)) end;
-					Instance = Menu:AddMenuInstance(Format('%s_Hitbox', GetName'Button'), 'Square', {
-						Position	= Position - V2New(20, 12);
-						Size		= V2New(BaseSize.X, 25);
-						Visible		= false;
-					});
-				};
-			elseif Option.Type == 'Button' then
-				UIButtons[#UIButtons + 1] = {
-					FromSubMenu = true;
-					Option = Option.Function;
-					Instance = Menu:AddMenuInstance(Format('%s_Hitbox', GetName'Button'), 'Square', {
-						Size		= V2New(BaseSize.X, 20) - V2New(20, 0);
-						Visible		= true;
-						Transparency= .5;
-						Position	= Position - V2New(10, 10);
-						Color		= Colors.Secondary.Light;
-						Filled		= true;
-					});
-				};
-				local Text		= Menu:AddMenuInstance(Format('%s_Text', GetName'Text'), 'Text', {
-					Text		= Option.Text;
-					Size		= 18;
-					Position	= Position + V2New(5, -10);
-					Visible		= true;
-					Color		= Colors.Primary.Dark;
-				});
-			end
-		end
-	end
-end
-
-function SubMenu:Hide()
-	self.Open = false;
-
-	for i, v in pairs(shared.MenuDrawingData.Instances) do
-		if i:sub(1, 3) == 'Sub' then
-			v.Visible = false;
-
-			if i:sub(4, 4) == ':' then -- ';' = Temporary so remove
-				v:Remove();
-				shared.MenuDrawingData.Instance[i] = nil;
-			end
-		end
-	end
-
-	for i, Button in pairs(UIButtons) do
-		if Button.FromSubMenu then
-			UIButtons[i] = nil;
-		end
-	end
-
-	spawn(function() -- stupid bug happens if i dont use this
-		for i = 1, 10 do
-			if shared.CurrentColorPicker then -- dont know why 'CurrentColorPicker' isnt a variable in this
-				shared.CurrentColorPicker:Dispose();
-			end
-			wait(0.1);
-		end
-	end)
-
-	CurrentColorPicker = nil;
-end
-
-function CreateMenu(NewPosition) -- Create Menu
-	MenuLoaded = false;
-	UIButtons  = {};
-	Sliders	   = {};
-
-	local BaseSize = V2New(300, 625);
-	local BasePosition = NewPosition or V2New(Camera.ViewportSize.X / 8 - (BaseSize.X / 2), Camera.ViewportSize.Y / 2 - (BaseSize.Y / 2));
-
-	BasePosition = V2New(math.clamp(BasePosition.X, 0, Camera.ViewportSize.X), math.clamp(BasePosition.Y, 0, Camera.ViewportSize.Y));
-
-	Menu:AddMenuInstance('CrosshairX', 'Line', {
-		Visible			= false;
-		Color			= Color3.new(0, 1, 0);
-		Transparency	= 1;
-		Thickness		= 1;
-	});
-	Menu:AddMenuInstance('CrosshairY', 'Line', {
-		Visible			= false;
-		Color			= Color3.new(0, 1, 0);
-		Transparency	= 1;
-		Thickness		= 1;
-	});
-
-	delay(.025, function() -- since zindex doesnt exist
-		Menu:AddMenuInstance('Main', 'Square', {
-			Size		= BaseSize;
-			Position	= BasePosition;
-			Filled		= false;
-			Color		= Colors.Primary.Main;
-			Thickness	= 3;
-			Visible		= true;
-		});
-	end);
-	Menu:AddMenuInstance('TopBar', 'Square', {
-		Position	= BasePosition;
-		Size		= V2New(BaseSize.X, 15);
-		Color		= Colors.Primary.Dark;
-		Filled		= true;
-		Visible		= true;
-	});
-	Menu:AddMenuInstance('TopBarTwo', 'Square', {
-		Position 	= BasePosition + V2New(0, 15);
-		Size		= V2New(BaseSize.X, 45);
-		Color		= Colors.Primary.Main;
-		Filled		= true;
-		Visible		= true;
-	});
-	Menu:AddMenuInstance('TopBarText', 'Text', {
-		Size 		= 25;
-		Position	= shared.MenuDrawingData.Instances.TopBarTwo.Position + V2New(25, 10);
-		Text		= 'Unnamed ESP';
-		Color		= Colors.Secondary.Light;
-		Visible		= true;
-		Transparency= 1; -- proto outline fix
-		Outline 	= true;
-		OutlineOpacity = 0.5;
-	});
-	Menu:AddMenuInstance('TopBarTextBR', 'Text', {
-		Size 		= 18;
-		Position	= shared.MenuDrawingData.Instances.TopBarTwo.Position + V2New(BaseSize.X - 75, 25);
-		Text		= 'by ic3w0lf';
-		Color		= Colors.Secondary.Light;
-		Visible		= true;
-		Transparency= 1;
-		Outline 	= true;
-		OutlineOpacity = 0.5;
-	});
-	Menu:AddMenuInstance('Filling', 'Square', {
-		Size		= BaseSize - V2New(0, 60);
-		Position	= BasePosition + V2New(0, 60);
-		Filled		= true;
-		Color		= Colors.Secondary.Main;
-		Transparency= .35;
-		Visible		= true;
-	});
-
-	local CPos = 0;
-
-	GetTableData(Options)(function(i, v)
-		if typeof(v.Value) == 'boolean' and not IsStringEmpty(v.Text) and v.Text ~= nil then
-			CPos 				= CPos + 25;
-			local BaseSize		= V2New(BaseSize.X, 30);
-			local BasePosition	= shared.MenuDrawingData.Instances.Filling.Position + V2New(30, v.Index * 25 - 10);
-			UIButtons[#UIButtons + 1] = {
-				Option = v;
-				Instance = Menu:AddMenuInstance(Format('%s_Hitbox', v.Name), 'Square', {
-					Position	= BasePosition - V2New(30, 15);
-					Size		= BaseSize;
-					Visible		= false;
-				});
-			};
-			Menu:AddMenuInstance(Format('%s_OuterCircle', v.Name), 'Circle', {
-				Radius		= 10;
-				Position	= BasePosition;
-				Color		= Colors.Secondary.Light;
-				Filled		= true;
-				Visible		= true;
-			});
-			Menu:AddMenuInstance(Format('%s_InnerCircle', v.Name), 'Circle', {
-				Radius		= 7;
-				Position	= BasePosition;
-				Color		= Colors.Secondary.Dark;
-				Filled		= true;
-				Visible		= v.Value;
-			});
-			Menu:AddMenuInstance(Format('%s_Text', v.Name), 'Text', {
-				Text		= v.Text;
-				Size		= 20;
-				Position	= BasePosition + V2New(20, -10);
-				Visible		= true;
-				Color		= Colors.Secondary.Light;
-				Transparency= 1;
-				Outline		= true;
-				OutlineOpacity = 0.5;
-			});
-		end
-	end)
-	GetTableData(Options)(function(i, v) -- just to make sure certain things are drawn before or after others, too lazy to actually sort table
-		if typeof(v.Value) == 'number' then
-			CPos 				= CPos + 25;
-
-			local BaseSize		= V2New(BaseSize.X, 30);
-			local BasePosition	= shared.MenuDrawingData.Instances.Filling.Position + V2New(0, CPos - 10);
-
-			local Line			= Menu:AddMenuInstance(Format('%s_SliderLine', v.Name), 'Square', {
-				Transparency	= 1;
-				Color			= Colors.Secondary.Light;
-				-- Thickness		= 3;
-				Filled			= true;
-				Visible			= true;
-				Position 		= BasePosition + V2New(15, -5);
-				Size 			= BaseSize - V2New(30, 10);
-				Transparency	= 0.5;
-			});
-			local Slider		= Menu:AddMenuInstance(Format('%s_Slider', v.Name), 'Square', {
-				Visible			= true;
-				Filled			= true;
-				Color			= Colors.Primary.Dark;
-				Size			= V2New(5, Line.Size.Y);
-				Transparency	= 0.5;
-			});
-			local Text			= Menu:AddMenuInstance(Format('%s_Text', v.Name), 'Text', {
-				Text			= v.Text;
-				Size			= 20;
-				Center			= true;
-				Transparency	= 1;
-				Outline			= true;
-				OutlineOpacity  = 0.5;
-				Visible			= true;
-				Color			= Colors.White;
-			}); Text.Position	= Line.Position + (Line.Size / 2) - V2New(0, Text.TextBounds.Y / 1.75);
-			local AMT			= Menu:AddMenuInstance(Format('%s_AmountText', v.Name), 'Text', {
-				Text			= tostring(v.Value);
-				Size			= 22;
-				Center			= true;
-				Transparency	= 1;
-				Outline			= true;
-				OutlineOpacity  = 0.5;
-				Visible			= true;
-				Color			= Colors.White;
-				Position		= Text.Position;
-			});
-
-			local CSlider = {Slider = Slider; Line = Line; Min = v.AllArgs[4]; Max = v.AllArgs[5]; Option = v};
-			local Dummy = Instance.new'NumberValue';
-
-			Dummy:GetPropertyChangedSignal'Value':Connect(function()
-				Text.Transparency = Dummy.Value;
-				-- Text.OutlineTransparency = 1 - Dummy.Value;
-				AMT.Transparency = 1 - Dummy.Value;
-			end);
-
-			Dummy.Value = 1;
-
-			function CSlider:ShowValue(Bool)
-				self.ShowingValue = Bool;
-
-				TweenService:Create(Dummy, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Value = Bool and 0 or 1 }):Play();
-			end
-
-			Sliders[#Sliders + 1] = CSlider;
-
-			-- local Percent = (v.Value / CSlider.Max) * 100;
-			-- local Size = math.abs(Line.From.X - Line.To.X);
-			-- local Value = Size * (Percent / 100); -- this shit's inaccurate but fuck it i'm not even gonna bother fixing it
-
-			Slider.Position = Line.Position + V2New(35, 0);
-			
-			v.BaseSize = BaseSize;
-			v.BasePosition = BasePosition;
-			-- AMT.Position = BasePosition + V2New(BaseSize.X - AMT.TextBounds.X - 10, -10)
-		end
-	end)
-	local FirstItem = false;
-	GetTableData(Options)(function(i, v) -- just to make sure certain things are drawn before or after others, too lazy to actually sort table
-		if typeof(v.Value) == 'EnumItem' then
-			CPos 				= CPos + (not FirstItem and 30 or 25);
-			FirstItem			= true;
-
-			local BaseSize		= V2New(BaseSize.X, FirstItem and 30 or 25);
-			local BasePosition	= shared.MenuDrawingData.Instances.Filling.Position + V2New(0, CPos - 10);
-
-			UIButtons[#UIButtons + 1] = {
-				Option = v;
-				Instance = Menu:AddMenuInstance(Format('%s_Hitbox', v.Name), 'Square', {
-					Size		= V2New(BaseSize.X, 20) - V2New(30, 0);
-					Visible		= true;
-					Transparency= .5;
-					Position	= BasePosition + V2New(15, -10);
-					Color		= Colors.Secondary.Light;
-					Filled		= true;
-				});
-			};
-			local Text		= Menu:AddMenuInstance(Format('%s_Text', v.Name), 'Text', {
-				Text		= v.Text;
-				Size		= 20;
-				Position	= BasePosition + V2New(20, -10);
-				Visible		= true;
-				Color		= Colors.Secondary.Light;
-				Transparency= 1;
-				Outline		= true;
-				OutlineOpacity = 0.5;
-			});
-			local BindText	= Menu:AddMenuInstance(Format('%s_BindText', v.Name), 'Text', {
-				Text		= tostring(v.Value):match'%w+%.%w+%.(.+)';
-				Size		= 20;
-				Position	= BasePosition;
-				Visible		= true;
-				Color		= Colors.Secondary.Light;
-				Transparency= 1;
-				Outline		= true;
-				OutlineOpacity = 0.5;
-			});
-
-			Options[i].BaseSize = BaseSize;
-			Options[i].BasePosition = BasePosition;
-			BindText.Position = BasePosition + V2New(BaseSize.X - BindText.TextBounds.X - 20, -10);
-		end
-	end)
-	GetTableData(Options)(function(i, v) -- just to make sure certain things are drawn before or after others, too lazy to actually sort table
-		if typeof(v.Value) == 'function' then
-			local BaseSize		= V2New(BaseSize.X, 30);
-			local BasePosition	= shared.MenuDrawingData.Instances.Filling.Position + V2New(0, CPos + (25 * v.AllArgs[4]) - 35);
-
-			UIButtons[#UIButtons + 1] = {
-				Option = v;
-				Instance = Menu:AddMenuInstance(Format('%s_Hitbox', v.Name), 'Square', {
-					Size		= V2New(BaseSize.X, 20) - V2New(30, 0);
-					Visible		= true;
-					Transparency= .5;
-					Position	= BasePosition + V2New(15, -10);
-					Color		= Colors.Secondary.Light;
-					Filled		= true;
-				});
-			};
-			local Text		= Menu:AddMenuInstance(Format('%s_Text', v.Name), 'Text', {
-				Text		= v.Text;
-				Size		= 20;
-				Position	= BasePosition + V2New(20, -10);
-				Visible		= true;
-				Color		= Colors.Secondary.Light;
-				Transparency= 1;
-				Outline		= true;
-				OutlineOpacity = 0.5;
-			});
-
-			-- BindText.Position = BasePosition + V2New(BaseSize.X - BindText.TextBounds.X - 10, -10);
-		end
-	end)
-
-	delay(.1, function()
-		MenuLoaded = true;
-	end);
-
-	-- this has to be at the bottom cuz proto drawing api doesnt have zindex :triumph:	
-	Menu:AddMenuInstance('Cursor1', 'Line', {
-		Visible			= false;
-		Color			= Color3.new(1, 0, 0);
-		Transparency	= 1;
-		Thickness		= 2;
-	});
-	Menu:AddMenuInstance('Cursor2', 'Line', {
-		Visible			= false;
-		Color			= Color3.new(1, 0, 0);
-		Transparency	= 1;
-		Thickness		= 2;
-	});
-	Menu:AddMenuInstance('Cursor3', 'Line', {
-		Visible			= false;
-		Color			= Color3.new(1, 0, 0);
-		Transparency	= 1;
-		Thickness		= 2;
-	});
-end
-
-CreateMenu();
-delay(0.1, function()
-	SubMenu:Show(V2New()); -- Create the submenu
-	SubMenu:Hide();
+function ESPs.Orthogonal:Render()
+    local ReplicaDict = SetupOrthogonalESP(self);
+    local Transparency, Color, Material = 1 - self.Opacity, self.CurrentColor, self.Material;
+    for Source, Replica in pairs(ReplicaDict) do
+        if (not Source.Parent) then
+            Replica:Destroy();
+            ReplicaDict[Source] = nil;
+            continue;
+        end;
+        Replica.CFrame = Source.CFrame;
+        Replica.Size = Source.Size;
+        Replica.Transparency = math.max(Transparency, Source.Transparency);
+        Replica.Color = Color;
+        Replica.Material = Material;
+    end;
+end;
+--#endregion
+--#region Highlight
+local function SetupHighlightESP(self)
+    if (self.Highlight) then return self.Highlight; end;
+    SetupViewport();
+    self.FillOpacity = 0.5;
+    local Highlight = Instance.new("Highlight", Viewport);
+    Highlight.Adornee = self.Instance;
+    self.Highlight = Highlight;
+    return Highlight;
+end;
+
+function ESPs.Highlight:Render()
+    local Highlight = SetupHighlightESP(self);
+    local Transparency, FillTransparency, Color = 1 - self.Opacity, 1 - self.FillOpacity, self.CurrentColor;
+    Highlight.OutlineColor = Color;
+    Highlight.FillColor = Color;
+    Highlight.OutlineTransparency = Transparency;
+    Highlight.FillTransparency = FillTransparency;
+    Highlight.Adornee = self.Instance;
+    Highlight.Parent = nil;
+    Highlight.Parent = Viewport;
+end;
+--#endregion
+--#endregion
+
+--#region Add Functions
+function DendroESP:AddPart(Part, Mode)
+    assert(self == DendroESP, "Expected a self call (:) instead of (.)");
+    assert(Part:IsA("BasePart"), "Expected a part for argument #1.");
+    local Mode = ESPs[Mode];
+    assert(Mode, "Invalid ESP Mode.");
+
+    local RenderingTable = CreateRenderingTable(Part, "Part");
+    RenderingTable.Mode = Mode;
+    RenderingTable.Prepare = PreparePart;
+    RenderingTable.MRender = Mode.Render;
+    return RenderingTable;
+end;
+
+function DendroESP:AddModel(Model, Mode)
+    assert(self == DendroESP, "Expected a self call (:) instead of (.)");
+    assert(Model:IsA("Model"), "Expected a model for argument #1.");
+    local Mode = ESPs[Mode];
+    assert(Mode, "Invalid ESP Mode.");
+    assert(Mode.ModelFlag, "This ESP Mode isn't available for models.");
+
+    local RenderingTable = CreateRenderingTable(Model, "Model");
+    RenderingTable.Mode = Mode;
+    RenderingTable.Prepare = PrepareModel;
+    RenderingTable.MRender = Mode.Render;
+    RenderingTable.RenderDescendants = (Mode == "Vertex" or Mode == "Outline");
+    return RenderingTable;
+end;
+
+function DendroESP:AddCharacter(Character, Mode)
+    assert(self == DendroESP, "Expected a self call (:) instead of (.)");
+    assert(Character:IsA("Model"), "Expected a character model for argument #1.");
+    local Mode = ESPs[Mode];
+    assert(Mode, "Invalid ESP Mode.");
+
+    local RenderingTable = CreateRenderingTable(Character, "Character");
+    RenderingTable.Mode = Mode;
+    RenderingTable.Prepare = PrepareCharacter;
+    RenderingTable.MRender = Mode.Render;
+    return RenderingTable;
+end;
+
+function DendroESP:BasicCharacterSystem()
+    LPlayer.CharacterAdded:Connect(function(Character)
+        DendroESP.RaycastParams.FilterDescendantsInstances = {Character};
+        DendroESP.BulletSource = Character.Head;
+    end);
+    DendroESP.RaycastParams.FilterDescendantsInstances = {LPlayer.Character};
+    DendroESP.BulletSource = LPlayer.Character.Head;
+end;
+
+function DendroESP:ClearESP()
+    for _ = 1, #RenderingTables do
+        RenderingTables[_]:Destroy();
+    end;
+end;
+--#endregion
+
+--#region ESP & Aimbot
+if (_G.DendroESP) then _G.DendroESP:ClearESP(); end;
+if (_G.DendroESPConnection) then _G.DendroESPConnection:Disconnect(); end;
+if (CoreGui:FindFirstChild("DendroESP")) then CoreGui.DendroESP:Destroy(); end;
+SetupViewport();
+DendroESP.MousePos = GetMousePos();
+_G.DendroESP = DendroESP;
+_G.DendroESPConnection = RunService.RenderStepped:Connect(function()
+    --//Preparing\\--
+    local MousePos = GetMousePos();
+    DendroESP.MousePos = MousePos;
+    NonNegativeTables = {};
+    Camera = Workspace.CurrentCamera;
+    BulletSource = GetBulletSource();
+    DendroESP.TracerSource = NewV2(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y);
+    --//Rendering\\--
+    if (Viewport) then Viewport.CurrentCamera = Camera; end;
+    for _, RenderingTable in pairs(RenderingTables) do
+        RenderingTable:Render();
+    end;
+    --//Firing Event\\--
+    PostRender:Fire(NonNegativeTables);
+    --//Clearing Unused Drawings\\--
+    for _, Drawings in pairs(Drawings) do
+        for Idx = Drawings.Count + 1, #Drawings do
+            Drawings[Idx].Visible = false;
+        end;
+        Drawings.Count = 0;
+    end;
+    --//Aimbot\\--
+    if (not DendroESP.AimbotEnabled) then return; end;
+    local AimTarget = DendroESP.AimTarget;
+    if (not AimTarget) then return; end;
+    local Delta = AimTarget - MousePos;
+    local Distance = Delta.Magnitude;
+    local Sensitivity = DendroESP:GetMouseSensitivity() * DendroESP.AimSensetivity;
+    Delta = Delta.Unit;
+    if (Distance <= 10) then
+        Delta = Delta / Sensitivity * 0.25 * Distance;
+    elseif (Distance <= 2) then
+        return;
+    else
+        Delta = Delta * Distance / Sensitivity;
+    end;
+    mousemoverel(Delta.X, Delta.Y);
 end);
+--#endregion
 
-shared.UESP_InputChangedCon = UserInputService.InputChanged:Connect(function(input)
-	if input.UserInputType.Name == 'MouseMovement' and Options.MenuOpen.Value then
-		for i, v in pairs(Sliders) do
-			local Values = {
-				v.Line.Position.X;
-				v.Line.Position.Y;
-				v.Line.Position.X + v.Line.Size.X;
-				v.Line.Position.Y + v.Line.Size.Y;
-			};
-			if MouseHoveringOver(Values) then
-				v:ShowValue(true);
-			else
-				if not MouseHeld then v:ShowValue(false); end
-			end
-		end
-	end
-end)
-shared.UESP_InputBeganCon = UserInputService.InputBegan:Connect(function(input)
-	if input.UserInputType.Name == 'MouseButton1' and Options.MenuOpen.Value then
-		MouseHeld = true;
-		local Bar = Menu:GetInstance'TopBar';
-		local Values = {
-			Bar.Position.X;
-			Bar.Position.Y;
-			Bar.Position.X + Bar.Size.X;
-			Bar.Position.Y + Bar.Size.Y;
-		}
-		if MouseHoveringOver(Values) then
-			DraggingUI = true;
-			DragOffset = Menu:GetInstance'Main'.Position - GetMouseLocation();
-		else
-			for i, v in pairs(Sliders) do
-				local Values = {
-					v.Line.Position.X;
-					v.Line.Position.Y;
-					v.Line.Position.X + v.Line.Size.X;
-					v.Line.Position.Y + v.Line.Size.Y;
-					-- v.Line.From.X	- (v.Slider.Radius);
-					-- v.Line.From.Y	- (v.Slider.Radius);
-					-- v.Line.To.X		+ (v.Slider.Radius);
-					-- v.Line.To.Y		+ (v.Slider.Radius);
-				};
-				if MouseHoveringOver(Values) then
-					DraggingWhat = v;
-					Dragging = true;
-					break
-				end
-			end
-
-			if not Dragging then
-				local Values = {
-					TracerPosition.X - 10;
-					TracerPosition.Y - 10;
-					TracerPosition.X + 10;
-					TracerPosition.Y + 10;
-				};
-				if MouseHoveringOver(Values) then
-					DragTracerPosition = true;
-				end
-			end
-		end
-	end
-end)
-shared.UESP_InputEndedCon = UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType.Name == 'MouseButton1' and Options.MenuOpen.Value then
-		MouseHeld = false;
-		DragTracerPosition = false;
-		local IgnoreOtherInput = false;
-
-		if SubMenu.Open and not MouseHoveringOver(SubMenu.Bounds) then
-			if CurrentColorPicker and IsMouseOverDrawing(CurrentColorPicker.Drawings['Square-Background']()) then IgnoreOtherInput = true; end
-			if not IgnoreOtherInput then SubMenu:Hide() end
-		end
-
-		if not IgnoreOtherInput then
-			for i, v in pairs(UIButtons) do
-				if SubMenu.Open and MouseHoveringOver(SubMenu.Bounds) and not v.FromSubMenu then continue end
-
-				local Values = {
-					v.Instance.Position.X;
-					v.Instance.Position.Y;
-					v.Instance.Position.X + v.Instance.Size.X;
-					v.Instance.Position.Y + v.Instance.Size.Y;
-				};
-				if MouseHoveringOver(Values) then
-					v.Option();
-					IgnoreOtherInput = true;
-					break -- prevent clicking 2 options
-				end
-			end
-			for i, v in pairs(Sliders) do
-				if IgnoreOtherInput then break end
-
-				local Values = {
-					v.Line.Position.X;
-					v.Line.Position.Y;
-					v.Line.Position.X + v.Line.Size.X;
-					v.Line.Position.Y + v.Line.Size.Y;
-				};
-				if not MouseHoveringOver(Values) then
-					v:ShowValue(false);
-				end
-			end
-		end
-	elseif input.UserInputType.Name == 'MouseButton2' and Options.MenuOpen.Value and not DragTracerPosition then
-		local Values = {
-			TracerPosition.X - 10;
-			TracerPosition.Y - 10;
-			TracerPosition.X + 10;
-			TracerPosition.Y + 10;
-		}
-		if MouseHoveringOver(Values) then
-			DragTracerPosition = false;
-			TracerPosition = V2New(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y - 135);
-		end
-	elseif input.UserInputType.Name == 'Keyboard' then
-		if Binding then
-			BindedKey = input.KeyCode;
-			Binding = false;
-		elseif input.KeyCode == Options.MenuKey.Value or (input.KeyCode == Enum.KeyCode.Home and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)) then
-			Options.MenuOpen();
-		elseif input.KeyCode == Options.ToggleKey.Value then
-			Options.Enabled();
-		elseif input.KeyCode.Name == 'F1' and UserInputService:IsMouseButtonPressed(1) and shared.am_ic3 then -- hehe hiden spectate feature cuz why not
-			local HD, LPlayer, LCharacter = 0.95;
-
-			for i, Player in pairs(Players:GetPlayers()) do
-				local Character = GetCharacter(Player);
-
-				if Player ~= LocalPlayer and Player ~= Spectating and Character and Character:FindFirstChild'HumanoidRootPart' then
-					local Head = Character:FindFirstChild'Head';
-					local Humanoid = Character:FindFirstChildOfClass'Humanoid';
-					
-					if Head then
-						local Distance  = (Camera.CFrame.Position - Head.Position).Magnitude;
-						
-						if Distance > Options.MaxDistance.Value then continue; end
-
-						local Direction = -(Camera.CFrame.Position - Mouse.Hit.Position).unit;
-						local Relative  = Character.Head.Position - Camera.CFrame.Position;
-						local Unit      = Relative.unit;
-
-						local DP = Direction:Dot(Unit);
-
-						if DP > HD then
-							HD = DP;
-							LPlayer = Player;
-							LCharacter = Character;
-						end
-					end
-				end
-			end
-			
-			if LPlayer and LPlayer ~= Spectating and LCharacter then
-				Camera.CameraSubject = LCharacter.Head;
-				Spectating = LPlayer;
-			else
-				if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass'Humanoid' then
-					Camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass'Humanoid';
-					Spectating = nil;
-				end
-			end
-		end
-	end
-end)
-
-local function CameraCon() -- unnamed esp v1 sucks
-	workspace.CurrentCamera:GetPropertyChangedSignal'ViewportSize':Connect(function()
-		TracerPosition = V2New(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y - 135);
-	end);
-end
-
-CameraCon();
-
-local function ToggleMenu()
-	if Options.MenuOpen.Value then
-		GetTableData(shared.MenuDrawingData.Instances)(function(i, v)
-			if OldData[v] then
-				pcall(Set, v, 'Visible', true);
-			end
-		end)
-	else
-		GetTableData(shared.MenuDrawingData.Instances)(function(i, v)
-			OldData[v] = v.Visible;
-			if v.Visible then
-				pcall(Set, v, 'Visible', false);
-			end
-		end)
-	end
-end
-
-local LastRayIgnoreUpdate, RayIgnoreList = 0, {}
-
-local function CheckRay(Instance, Distance, Position, Unit)
-	local Pass = true;
-	local Model = Instance;
-
-	if Distance > 999 then return false; end
-
-	if Instance.ClassName == 'Player' then
-		Model = GetCharacter(Instance);
-	end
-
-	if not Model then
-		Model = Instance.Parent;
-
-		if Model.Parent == workspace then
-			Model = Instance;
-		end
-	end
-
-	if not Model then return false end
-
-	local _Ray = Ray.new(Position, Unit * Distance)
-
-	if tick() - LastRayIgnoreUpdate > 3 then
-		LastRayIgnoreUpdate = tick()
-
-		table.clear(RayIgnoreList)
-
-		table.insert(RayIgnoreList, LocalPlayer.Character)
-		table.insert(RayIgnoreList, Camera)
-		
-		if Mouse.TargetFilter then table.insert(RayIgnoreList, Mouse.TargetFilter) end
-
-		if #IgnoreList > 64 then
-			while #IgnoreList > 64 do
-				table.remove(IgnoreList, 1)
-			end
-		end
-
-		for i, v in pairs(IgnoreList) do table.insert(RayIgnoreList, v) end
-	end
-
-	local Hit = workspace:FindPartOnRayWithIgnoreList(_Ray, RayIgnoreList)
-
-	if Hit and not Hit:IsDescendantOf(Model) then
-		Pass = false;
-		if Hit.Transparency >= .3 or not Hit.CanCollide and Hit.ClassName ~= Terrain then -- Detect invisible walls
-			table.insert(IgnoreList, Hit)
-			-- IgnoreList[#IgnoreList + 1] = Hit;
-		end
-	end
-
-	return Pass;
-end
-
-local function CheckTeam(Player)
-	if Player.Neutral and LocalPlayer.Neutral then return true; end
-	return Player.TeamColor == LocalPlayer.TeamColor;
-end
-
-local CustomTeam = CustomTeams[game.PlaceId];
-
-if CustomTeam ~= nil then
-	if CustomTeam.Initialize then ypcall(CustomTeam.Initialize) end
-
-	CheckTeam = CustomTeam.CheckTeam;
-end
-
-local function CheckPlayer(Player, Character)
-	if not Options.Enabled.Value then return false end
-
-	local Pass = true;
-	local Distance = 0;
-
-	if Player ~= LocalPlayer and Character then
-		if not Options.ShowTeam.Value and CheckTeam(Player) then
-			Pass = false;
-		end
-
-		local Head = Character:FindFirstChild'Head';
-
-		if Pass and Character and Head then
-			Distance = (Camera.CFrame.Position - Head.Position).Magnitude;
-			if Options.VisCheck.Value then
-				Pass = CheckRay(Player, Distance, Camera.CFrame.Position, (Head.Position - Camera.CFrame.Position).unit);
-			end
-			if Distance > Options.MaxDistance.Value then
-				Pass = false;
-			end
-		end
-	else
-		Pass = false;
-	end
-
-	return Pass, Distance;
-end
-
-local function CheckDistance(Instance)
-	if not Options.Enabled.Value then return false end
-
-	local Pass = true;
-	local Distance = 0;
-
-	if Instance ~= nil then
-		Distance = (Camera.CFrame.Position - Instance.Position).Magnitude;
-		if Options.VisCheck.Value then
-			Pass = CheckRay(Instance, Distance, Camera.CFrame.Position, (Instance.Position - Camera.CFrame.Position).unit);
-		end
-		if Distance > Options.MaxDistance.Value then
-			Pass = false;
-		end
-	else
-		Pass = false;
-	end
-
-	return Pass, Distance;
-end
-
-local function UpdatePlayerData()
-	if (tick() - LastRefresh) > (Options.RefreshRate.Value / 1000) then
-		LastRefresh = tick();
-		if CustomESP and Options.Enabled.Value then
-			local a, b = pcall(CustomESP);
-		end
-		for i, v in pairs(RenderList.Instances) do
-			if v.Instance ~= nil and v.Instance.Parent ~= nil and v.Instance:IsA'BasePart' then
-				local Data = shared.InstanceData[v.Instance:GetDebugId()] or { Instances = {}; DontDelete = true };
-
-				Data.Instance = v.Instance;
-
-				Data.Instances['OutlineTracer'] = Data.Instances['OutlineTracer'] or NewDrawing'Line'{
-					Transparency	= 0.75;
-					Thickness		= 5;
-					Color 			= Color3.new(0.1, 0.1, 0.1);
-				}
-				Data.Instances['Tracer'] = Data.Instances['Tracer'] or NewDrawing'Line'{
-					Transparency	= 1;
-					Thickness		= 2;
-				}
-				Data.Instances['NameTag'] = Data.Instances['NameTag'] or NewDrawing'Text'{
-					Size			= Options.TextSize.Value;
-					Center			= true;
-					Outline			= Options.TextOutline.Value;
-					Visible			= true;
-				};
-				Data.Instances['DistanceTag'] = Data.Instances['DistanceTag'] or NewDrawing'Text'{
-					Size			= Options.TextSize.Value - 1;
-					Center			= true;
-					Outline			= Options.TextOutline.Value;
-					Visible			= true;
-				};
-
-				local NameTag		= Data.Instances['NameTag'];
-				local DistanceTag	= Data.Instances['DistanceTag'];
-				local Tracer		= Data.Instances['Tracer'];
-				local OutlineTracer	= Data.Instances['OutlineTracer'];
-
-				local Pass, Distance = CheckDistance(v.Instance);
-
-				if Pass then
-					local ScreenPosition, Vis = WorldToViewport(v.Instance.Position);
-					local Color = v.Color;
-					local OPos = Camera.CFrame:pointToObjectSpace(v.Instance.Position);
-					
-					if ScreenPosition.Z < 0 then
-						local AT = math.atan2(OPos.Y, OPos.X) + math.pi;
-						OPos = CFrame.Angles(0, 0, AT):vectorToWorldSpace((CFrame.Angles(0, math.rad(89.9), 0):vectorToWorldSpace(V3New(0, 0, -1))));
-					end
-					
-					local Position = WorldToViewport(Camera.CFrame:pointToWorldSpace(OPos));
-
-					if Options.ShowTracers.Value then
-						Tracer.Transparency = math.clamp(Distance / 200, 0.45, 0.8);
-						Tracer.Visible	= true;
-						Tracer.From		= TracerPosition;
-						Tracer.To		= V2New(Position.X, Position.Y);
-						Tracer.Color	= Color;
-						OutlineTracer.Visible = true;
-						OutlineTracer.Transparency = Tracer.Transparency - 0.1;
-						OutlineTracer.From = Tracer.From;
-						OutlineTracer.To = Tracer.To;
-						OutlineTracer.Color	= Color3.new(0.1, 0.1, 0.1);
-					else
-						Tracer.Visible = false;
-						OutlineTracer.Visible = false;
-					end
-
-					if ScreenPosition.Z > 0 then
-						local ScreenPositionUpper = ScreenPosition;
-						
-						if Options.ShowName.Value then
-							LocalPlayer.NameDisplayDistance = 0;
-							NameTag.Visible		= true;
-							NameTag.Text		= v.Text;
-							NameTag.Size		= Options.TextSize.Value;
-							NameTag.Outline		= Options.TextOutline.Value;
-							NameTag.Position	= V2New(ScreenPositionUpper.X, ScreenPositionUpper.Y);
-							NameTag.Color		= Color;
-							if Drawing.Fonts and shared.am_ic3 then -- CURRENTLY SYNAPSE ONLY :MEGAHOLY:
-								NameTag.Font	= Drawing.Fonts.Monospace;
-							end
-						else
-							LocalPlayer.NameDisplayDistance = 100;
-							NameTag.Visible = false;
-						end
-						if Options.ShowDistance.Value or Options.ShowHealth.Value then
-							DistanceTag.Visible		= true;
-							DistanceTag.Size		= Options.TextSize.Value - 1;
-							DistanceTag.Outline		= Options.TextOutline.Value;
-							DistanceTag.Color		= Color3.new(1, 1, 1);
-							if Drawing.Fonts and shared.am_ic3 then -- CURRENTLY SYNAPSE ONLY :MEGAHOLY:
-								NameTag.Font	= Drawing.Fonts.Monospace;
-							end
-
-							local Str = '';
-
-							if Options.ShowDistance.Value then
-								Str = Str .. Format('[%d] ', Distance);
-							end
-
-							DistanceTag.Text = Str;
-							DistanceTag.Position = V2New(ScreenPositionUpper.X, ScreenPositionUpper.Y) + V2New(0, NameTag.TextBounds.Y);
-						else
-							DistanceTag.Visible = false;
-						end
-					else
-						NameTag.Visible			= false;
-						DistanceTag.Visible		= false;
-					end
-				else
-					NameTag.Visible			= false;
-					DistanceTag.Visible		= false;
-					Tracer.Visible			= false;
-					OutlineTracer.Visible	= false;
-				end
-
-				Data.Instances['NameTag'] 		= NameTag;
-				Data.Instances['DistanceTag']	= DistanceTag;
-				Data.Instances['Tracer']		= Tracer;
-				Data.Instances['OutlineTracer']	= OutlineTracer;
-
-				shared.InstanceData[v.Instance:GetDebugId()] = Data;
-			end
-		end
-		for i, v in pairs(Players:GetPlayers()) do
-			local Data = shared.InstanceData[v.Name] or { Instances = {}; };
-
-			Data.Instances['Box'] = Data.Instances['Box'] or LineBox:Create{Thickness = 4};
-			Data.Instances['OutlineTracer'] = Data.Instances['OutlineTracer'] or NewDrawing'Line'{
-				Transparency	= 1;
-				Thickness		= 3;
-				Color			= Color3.new(0.1, 0.1, 0.1);
-			}
-			Data.Instances['Tracer'] = Data.Instances['Tracer'] or NewDrawing'Line'{
-				Transparency	= 1;
-				Thickness		= 1;
-			}
-			Data.Instances['HeadDot'] = Data.Instances['HeadDot'] or NewDrawing'Circle'{
-				Filled			= true;
-				NumSides		= 30;
-			}
-			Data.Instances['NameTag'] = Data.Instances['NameTag'] or NewDrawing'Text'{
-				Size			= Options.TextSize.Value;
-				Center			= true;
-				Outline			= Options.TextOutline.Value;
-				OutlineOpacity	= 1;
-				Visible			= true;
-			};
-			Data.Instances['DistanceHealthTag'] = Data.Instances['DistanceHealthTag'] or NewDrawing'Text'{
-				Size			= Options.TextSize.Value - 1;
-				Center			= true;
-				Outline			= Options.TextOutline.Value;
-				OutlineOpacity	= 1;
-				Visible			= true;
-			};
-
-			local NameTag		= Data.Instances['NameTag'];
-			local DistanceTag	= Data.Instances['DistanceHealthTag'];
-			local Tracer		= Data.Instances['Tracer'];
-			local OutlineTracer	= Data.Instances['OutlineTracer'];
-			local HeadDot		= Data.Instances['HeadDot'];
-			local Box			= Data.Instances['Box'];
-
-			local Character = GetCharacter(v);
-			local Pass, Distance = CheckPlayer(v, Character);
-
-			if Pass and Character then
-				local Humanoid = Character:FindFirstChildOfClass'Humanoid';
-				local Head = Character:FindFirstChild'Head';
-				local HumanoidRootPart = Character:FindFirstChild(CustomRootPartName or 'HumanoidRootPart')
-
-				local Dead = (Humanoid and Humanoid:GetState().Name == 'Dead')
-				
-				if type(GetAliveState) == 'function' then
-					Dead = (not GetAliveState(v, Character))
-				end
-
-				if Character ~= nil and Head and HumanoidRootPart and not Dead then
-					local ScreenPosition, Vis = WorldToViewport(Head.Position);
-					local Color = Rainbow and Color3.fromHSV(tick() * 128 % 255/255, 1, 1) or (CheckTeam(v) and TeamColor or EnemyColor); Color = Options.ShowTeamColor.Value and v.TeamColor.Color or Color;
-					local OPos = Camera.CFrame:pointToObjectSpace(Head.Position);
-					
-					if ScreenPosition.Z < 0 then
-						local AT = math.atan2(OPos.Y, OPos.X) + math.pi;
-						OPos = CFrame.Angles(0, 0, AT):vectorToWorldSpace((CFrame.Angles(0, math.rad(89.9), 0):vectorToWorldSpace(V3New(0, 0, -1))));
-					end
-					
-					local Position = WorldToViewport(Camera.CFrame:pointToWorldSpace(OPos));
-
-					if Options.ShowTracers.Value then
-						if TracerPosition.X >= Camera.ViewportSize.X or TracerPosition.Y >= Camera.ViewportSize.Y or TracerPosition.X < 0 or TracerPosition.Y < 0 then
-							TracerPosition = V2New(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y - 135);
-						end
-
-						Tracer.Visible	= true;
-						Tracer.Transparency = math.clamp(1 - (Distance / 200), 0.25, 0.75);
-						Tracer.From		= TracerPosition;
-						Tracer.To		= V2New(Position.X, Position.Y);
-						Tracer.Color	= Color;
-						OutlineTracer.From = Tracer.From;
-						OutlineTracer.To = Tracer.To;
-						OutlineTracer.Transparency = Tracer.Transparency - 0.15;
-						OutlineTracer.Visible = true;
-					else
-						Tracer.Visible = false;
-						OutlineTracer.Visible = false;
-					end
-					
-					if ScreenPosition.Z > 0 then
-						local ScreenPositionUpper	= WorldToViewport((HumanoidRootPart:GetRenderCFrame() * CFrame.new(0, Head.Size.Y + HumanoidRootPart.Size.Y + (Options.YOffset.Value / 25), 0)).Position);
-						local Scale					= Head.Size.Y / 2;
-
-						if Options.ShowName.Value then
-							NameTag.Visible		= true;
-							NameTag.Text		= v.Name .. (CustomPlayerTag and CustomPlayerTag(v) or '');
-							NameTag.Size		= Options.TextSize.Value;
-							NameTag.Outline		= Options.TextOutline.Value;
-							NameTag.Position	= V2New(ScreenPositionUpper.X, ScreenPositionUpper.Y) - V2New(0, NameTag.TextBounds.Y);
-							NameTag.Color		= Color;
-							NameTag.Color		= Color;
-							NameTag.OutlineColor= Color3.new(0.05, 0.05, 0.05);
-							NameTag.Transparency= 0.85;
-							if Drawing.Fonts and shared.am_ic3 then -- CURRENTLY SYNAPSE ONLY :MEGAHOLY:
-								NameTag.Font	= Drawing.Fonts.Monospace;
-							end
-						else
-							NameTag.Visible = false;
-						end
-						if Options.ShowDistance.Value or Options.ShowHealth.Value then
-							DistanceTag.Visible		= true;
-							DistanceTag.Size		= Options.TextSize.Value - 1;
-							DistanceTag.Outline		= Options.TextOutline.Value;
-							DistanceTag.Color		= Color3.new(1, 1, 1);
-							DistanceTag.Transparency= 0.85;
-							if Drawing.Fonts and shared.am_ic3 then -- CURRENTLY SYNAPSE ONLY :MEGAHOLY:
-								NameTag.Font	= Drawing.Fonts.Monospace;
-							end
-
-							local Str = '';
-
-							if Options.ShowDistance.Value then
-								Str = Str .. Format('[%d] ', Distance);
-							end
-							if Options.ShowHealth.Value then								
-								if typeof(Humanoid) == 'Instance' then
-									Str = Str .. Format('[%d/%d] [%s%%]', Humanoid.Health, Humanoid.MaxHealth, math.floor(Humanoid.Health / Humanoid.MaxHealth * 100));
-								elseif type(GetHealth) == 'function' then
-									local health, maxHealth = GetHealth(v)
-									
-									if type(health) == 'number' and type(maxHealth) == 'number' then
-										Str = Str .. Format('[%d/%d] [%s%%]', health, maxHealth, math.floor(health / maxHealth * 100))
-									end
-								end
-							end
-
-							DistanceTag.Text = Str;
-							DistanceTag.OutlineColor = Color3.new(0.05, 0.05, 0.05);
-							DistanceTag.Position = (NameTag.Visible and NameTag.Position + V2New(0, NameTag.TextBounds.Y) or V2New(ScreenPositionUpper.X, ScreenPositionUpper.Y));
-						else
-							DistanceTag.Visible = false;
-						end
-						if Options.ShowDot.Value and Vis then
-							local Top			= WorldToViewport((Head.CFrame * CFrame.new(0, Scale, 0)).Position);
-							local Bottom		= WorldToViewport((Head.CFrame * CFrame.new(0, -Scale, 0)).Position);
-							local Radius		= math.abs((Top - Bottom).Y);
-
-							HeadDot.Visible		= true;
-							HeadDot.Color		= Color;
-							HeadDot.Position	= V2New(ScreenPosition.X, ScreenPosition.Y);
-							HeadDot.Radius		= Radius;
-						else
-							HeadDot.Visible = false;
-						end
-						if Options.ShowBoxes.Value and Vis and HumanoidRootPart then
-							local Body = {
-								Head;
-								Character:FindFirstChild'Left Leg' or Character:FindFirstChild'LeftLowerLeg';
-								Character:FindFirstChild'Right Leg' or Character:FindFirstChild'RightLowerLeg';
-								Character:FindFirstChild'Left Arm' or Character:FindFirstChild'LeftLowerArm';
-								Character:FindFirstChild'Right Arm' or Character:FindFirstChild'RightLowerArm';
-							}
-							Box:Update(HumanoidRootPart.CFrame, V3New(2, 3, 1) * (Scale * 2), Color, nil, shared.am_ic3 and Body);
-						else
-							Box:SetVisible(false);
-						end
-					else
-						NameTag.Visible			= false;
-						DistanceTag.Visible		= false;
-						HeadDot.Visible			= false;
-						
-						Box:SetVisible(false);
-					end
-				else
-					NameTag.Visible			= false;
-					DistanceTag.Visible		= false;
-					HeadDot.Visible			= false;
-					Tracer.Visible			= false;
-					OutlineTracer.Visible 	= false;
-					
-					Box:SetVisible(false);
-				end
-			else
-				NameTag.Visible			= false;
-				DistanceTag.Visible		= false;
-				HeadDot.Visible			= false;
-				Tracer.Visible			= false;
-				OutlineTracer.Visible 	= false;
-
-				Box:SetVisible(false);
-			end
-
-			shared.InstanceData[v.Name] = Data;
-		end
-	end
-end
-
-local LastInvalidCheck = 0;
-
-local function Update()
-	if tick() - LastInvalidCheck > 0.3 then
-		LastInvalidCheck = tick();
-
-		if Camera.Parent ~= workspace then
-			Camera = workspace.CurrentCamera;
-			CameraCon();
-			WTVP = Camera.WorldToViewportPoint;
-		end
-
-		for i, v in pairs(shared.InstanceData) do
-			if not Players:FindFirstChild(tostring(i)) then
-				if not shared.InstanceData[i].DontDelete then
-					GetTableData(v.Instances)(function(i, obj)
-						obj.Visible = false;
-						obj:Remove();
-						v.Instances[i] = nil;
-					end)
-					shared.InstanceData[i] = nil;
-				else
-					if shared.InstanceData[i].Instance == nil or shared.InstanceData[i].Instance.Parent == nil then
-						GetTableData(v.Instances)(function(i, obj)
-							obj.Visible = false;
-							obj:Remove();
-							v.Instances[i] = nil;
-						end)
-						shared.InstanceData[i] = nil;
-					end
-				end
-			end
-		end
-	end
-
-	local CX = Menu:GetInstance'CrosshairX';
-	local CY = Menu:GetInstance'CrosshairY';
-	
-	if Options.Crosshair.Value then
-		CX.Visible = true;
-		CY.Visible = true;
-
-		CX.To = V2New((Camera.ViewportSize.X / 2) - 8, (Camera.ViewportSize.Y / 2));
-		CX.From = V2New((Camera.ViewportSize.X / 2) + 8, (Camera.ViewportSize.Y / 2));
-		CY.To = V2New((Camera.ViewportSize.X / 2), (Camera.ViewportSize.Y / 2) - 8);
-		CY.From = V2New((Camera.ViewportSize.X / 2), (Camera.ViewportSize.Y / 2) + 8);
-	else
-		CX.Visible = false;
-		CY.Visible = false;
-	end
-
-	if Options.MenuOpen.Value and MenuLoaded then
-		local MLocation = GetMouseLocation();
-		shared.MenuDrawingData.Instances.Main.Color = Color3.fromHSV(tick() * 24 % 255/255, 1, 1);
-		local MainInstance = Menu:GetInstance'Main';
-		
-		local Values = {
-			MainInstance.Position.X;
-			MainInstance.Position.Y;
-			MainInstance.Position.X + MainInstance.Size.X;
-			MainInstance.Position.Y + MainInstance.Size.Y;
-		};
-		
-		if MainInstance and (MouseHoveringOver(Values) or (SubMenu.Open and MouseHoveringOver(SubMenu.Bounds))) then
-			Debounce.CursorVis = true;
-			
-			Menu:UpdateMenuInstance'Cursor1'{
-				Visible	= true;
-				From	= V2New(MLocation.x, MLocation.y);
-				To		= V2New(MLocation.x + 5, MLocation.y + 6);
-			}
-			Menu:UpdateMenuInstance'Cursor2'{
-				Visible	= true;
-				From	= V2New(MLocation.x, MLocation.y);
-				To		= V2New(MLocation.x, MLocation.y + 8);
-			}
-			Menu:UpdateMenuInstance'Cursor3'{
-				Visible	= true;
-				From	= V2New(MLocation.x, MLocation.y + 6);
-				To		= V2New(MLocation.x + 5, MLocation.y + 5);
-			}
-		else
-			if Debounce.CursorVis then
-				Debounce.CursorVis = false;
-				
-				Menu:UpdateMenuInstance'Cursor1'{Visible = false};
-				Menu:UpdateMenuInstance'Cursor2'{Visible = false};
-				Menu:UpdateMenuInstance'Cursor3'{Visible = false};
-			end
-		end
-		if MouseHeld then
-			local MousePos = GetMouseLocation();
-
-			if Dragging then
-				DraggingWhat.Slider.Position = V2New(math.clamp(MLocation.X - DraggingWhat.Slider.Size.X / 2, DraggingWhat.Line.Position.X, DraggingWhat.Line.Position.X + DraggingWhat.Line.Size.X - DraggingWhat.Slider.Size.X), DraggingWhat.Slider.Position.Y);
-				local Percent	= (DraggingWhat.Slider.Position.X - DraggingWhat.Line.Position.X) / ((DraggingWhat.Line.Position.X + DraggingWhat.Line.Size.X - DraggingWhat.Line.Position.X) - DraggingWhat.Slider.Size.X);
-				local Value		= CalculateValue(DraggingWhat.Min, DraggingWhat.Max, Percent);
-				DraggingWhat.Option(Value);
-			elseif DraggingUI then
-				Debounce.UIDrag = true;
-				local Main = Menu:GetInstance'Main';
-				Main.Position = MousePos + DragOffset;
-			elseif DragTracerPosition then
-				TracerPosition = MousePos;
-			end
-		else
-			Dragging = false;
-			DragTracerPosition = false;
-			if DraggingUI and Debounce.UIDrag then
-				Debounce.UIDrag = false;
-				DraggingUI = false;
-				CreateMenu(Menu:GetInstance'Main'.Position);
-			end
-		end
-		if not Debounce.Menu then
-			Debounce.Menu = true;
-			ToggleMenu();
-		end
-	elseif Debounce.Menu and not Options.MenuOpen.Value then
-		Debounce.Menu = false;
-		ToggleMenu();
-	end
-end
-
-RunService:UnbindFromRenderStep(GetDataName);
-RunService:UnbindFromRenderStep(UpdateName);
-
-RunService:BindToRenderStep(GetDataName, 300, UpdatePlayerData);
-RunService:BindToRenderStep(UpdateName, 199, Update);
+return DendroESP;
