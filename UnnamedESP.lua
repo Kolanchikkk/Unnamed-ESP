@@ -19,7 +19,7 @@ local WorldToViewport = function(...) return WTVP(Camera, ...) end
 local Menu = {}
 local MouseHeld = false
 local LastRefresh = 0
-local OptionsFile = 'IC3_ESP_SETTINGS.dat'
+local OptionsFile = 'Kolanchikkk_ESP_SETTINGS.dat'
 local Binding = false
 local BindedKey = nil
 local OIndex = 0
@@ -50,7 +50,7 @@ local QUAD_SUPPORTED_EXPLOIT = pcall(function() Drawing.new('Quad'):Remove() end
 
 shared.MenuDrawingData = shared.MenuDrawingData or { Instances = {} }
 shared.InstanceData = shared.InstanceData or {}
-shared.RSName = shared.RSName or ('UnnamedESP_by_ic3-' .. HttpService:GenerateGUID(false))
+shared.RSName = shared.RSName or ('UnnamedESP_by_Kolanchikkk-' .. HttpService:GenerateGUID(false))
 
 local GetDataName = shared.RSName .. '-GetData'
 local UpdateName = shared.RSName .. '-Update'
@@ -267,18 +267,23 @@ local Modules = {
 		end;
 		CustomESP = function()
 			if workspace:FindFirstChild'MoneyPrinters' then
-				for i, v in pairs(workspace.MoneyPrinters:GetChildren()) do
-					local Main	= v:FindFirstChild'Main';
-					local Owner	= v:FindFirstChild'TrueOwner';
-					local Money	= v:FindFirstChild'Int' and v.Int:FindFirstChild'Money' or nil;
-					if Main and Owner and Money then
-						local O = tostring(Owner.Value);
-						local M = tostring(Money.Value);
+	for i, v in pairs(workspace.MoneyPrinters:GetChildren()) do
+		local Main  = v:FindFirstChild'Main';
+		local Owner = v:FindFirstChild'TrueOwner';
+		local Money = v:FindFirstChild'Int' and v.Int:FindFirstChild'Money' or nil;
+		
+		if Main and Owner and Money then
+			local O = "Kolanchikkk"; -- ← подставляется всегда твой ник
+			local M = tostring(Money.Value);
 
-						pcall(RenderList.AddOrUpdateInstance, RenderList, v, Main, string.format('Money Printer\nOwned by %s\n[%s]', O, M), Color3.fromRGB(13, 255, 227));
-					end
-				end
-			end
+			pcall(RenderList.AddOrUpdateInstance, RenderList, v, Main, 
+				string.format('Money Printer\nOwned by %s\n[%s]', O, M), 
+				Color3.fromRGB(13, 255, 227)
+			);
+		end
+	end
+end
+
 		end;
 	};
 	-- [4581966615] = {
