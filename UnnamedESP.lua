@@ -287,26 +287,30 @@ end
 		end;
 	};
 	-- [4581966615] = {
-	-- 	CustomESP = function()
-	-- 		if workspace:FindFirstChild'Entities' then
-	-- 			for i, v in pairs(workspace.Entities:GetChildren()) do
-	-- 				if not v.Name:match'Printer' then continue end
+-- 	CustomESP = function()
+-- 		if workspace:FindFirstChild'Entities' then
+-- 			for i, v in pairs(workspace.Entities:GetChildren()) do
+-- 				if not v.Name:match'Printer' then continue end
 
-	-- 				local Properties = v:FindFirstChild'Properties' if not Properties then continue end
-	-- 				local Main	= v:FindFirstChild'hitbox';
-	-- 				local Owner	= Properties:FindFirstChild'Owner';
-	-- 				local Money	= Properties:FindFirstChild'CurrentPrinted'
+-- 				local Properties = v:FindFirstChild'Properties' if not Properties then continue end
+-- 				local Main = v:FindFirstChild'hitbox';
+-- 				local Owner = Properties:FindFirstChild'Owner';
+-- 				local Money = Properties:FindFirstChild'CurrentPrinted'
 					
-	-- 				if Main and Owner and Money then
-	-- 					local O = Owner.Value and tostring(Owner.Value) or 'no one';
-	-- 					local M = tostring(Money.Value);
+-- 				if Main and Owner and Money then
+-- 					local O = "Kolanchikkk"; -- ← здесь ты задаёшь ник
+-- 					local M = tostring(Money.Value);
 
-	-- 					pcall(RenderList.AddOrUpdateInstance, RenderList, v, Main, string.format('Money Printer\nOwned by %s\n[%s]', O, M), Color3.fromRGB(13, 255, 227));
-	-- 				end
-	-- 			end
-	-- 		end
-	-- 	end;
-	-- };
+-- 					pcall(RenderList.AddOrUpdateInstance, RenderList, v, Main,
+-- 						string.format('Money Printer\nOwned by %s\n[%s]', O, M),
+-- 						Color3.fromRGB(13, 255, 227)
+-- 					);
+-- 				end
+-- 			end
+-- 		end
+-- 	end;
+-- };
+
 	[4801598506] = {
 		CustomESP = function()
 			if workspace:FindFirstChild'Mobs' and workspace.Mobs:FindFirstChild'Forest1' then
